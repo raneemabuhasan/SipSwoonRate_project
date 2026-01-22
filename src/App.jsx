@@ -1,0 +1,354 @@
+import React, { useState } from 'react';
+import { db } from './db';
+import Auth from './components/Auth';
+import CoffeeList from './components/CoffeeList';
+import SearchBar from './components/SearchBar';
+import Stats from './components/Stats';
+import ReviewForm from './components/ReviewForm';
+import Profile from './components/Profile';
+import CoffeeShopMap from './components/CoffeeShopMap';
+import AdminTools from './components/AdminTools';
+import { clearRememberMeToken, clearRememberedUsername } from './utils/auth';
+
+function App() {
+  const { user } = db.useAuth();
+  
+  // Query coffee shops with reviews for map view
+  const { data } = db.useQuery({
+    coffeeShops: {
+      reviews: {},
+    },
+  });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [minRating, setMinRating] = useState(null);
+  const [sortBy, setSortBy] = useState('newest');
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [editingReview, setEditingReview] = useState(null);
+  const [selectedShop, setSelectedShop] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showAdminTools, setShowAdminTools] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [viewMode, setViewMode] = useState('list'); // 'list' or 'map'
+
+  const handleSignOut = async () => {
+    // Clear remember me data from localStorage
+    clearRememberMeToken();
+    clearRememberedUsername();
+    
+    // Clear remember me token from database
+    if (user?.id) {
+      try {
+        await db.transact([
+          db.tx.$users[user.id].update({
+            rememberMeToken: null,
+          }),
+        ]);
+      } catch (error) {
+        console.error('Error clearing remember me token:', error);
+      }
+    }
+    
+    // Sign out
+    await db.auth.signOut();
+  };
+
+  const handleEditReview = (review) => {
+    setEditingReview(review);
+    // review.shop might be a ref object, get the actual shop data
+    setSelectedShop(review.shop?.id ? { id: review.shop.id } : review.shop);
+    setShowReviewForm(true);
+  };
+
+  const handleDeleteReview = async (reviewId) => {
+    if (!reviewId) {
+      console.error('No review ID provided');
+      return;
+    }
+
+    try {
+      console.log('Deleting review:', reviewId);
+      
+      // Delete the review - InstantDB will automatically update all queries
+      const result = await db.transact([db.tx.reviews[reviewId].delete()]);
+      
+      console.log('Review deleted successfully:', result);
+      
+      // The UI will update automatically via db.useQuery() in CoffeeList
+      // InstantDB's real-time subscriptions will refresh the data
+    } catch (error) {
+      console.error('Error deleting review:', error);
+      alert(`Failed to delete review: ${error.message || 'Unknown error'}. Please try again.`);
+    }
+  };
+
+  const handleReviewFormSuccess = () => {
+    setShowReviewForm(false);
+    setEditingReview(null);
+    setSelectedShop(null);
+  };
+
+  const handleReviewFormCancel = () => {
+    setShowReviewForm(false);
+    setEditingReview(null);
+    setSelectedShop(null);
+  };
+
+  const handleAuthSuccess = () => {
+    setShowAuth(false);
+  };
+
+  return (
+    <div 
+      className="app"
+      onClick={() => showProfileDropdown && setShowProfileDropdown(false)}
+    >
+      <nav className="navbar" onClick={(e) => e.stopPropagation()}>
+        <div className="container">
+          <div className="nav-brand">
+            <h1>☕ Sip Swoon - Rate Your Coffee</h1>
+          </div>
+          <div className="nav-menu" style={{ position: 'relative' }}>
+            {user ? (
+              <div
+                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  cursor: 'pointer',
+                  padding: '0.5rem',
+                  borderRadius: '8px',
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                {user.profilePhotoUrl ? (
+                  <img
+                    src={user.profilePhotoUrl}
+                    alt="Profile"
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: '2px solid #6F4E37',
+                    }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '50%',
+                      background: '#6F4E37',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      fontSize: '1.2rem',
+                    }}
+                  >
+                    {user.username?.[0]?.toUpperCase() || '?'}
+                  </div>
+                )}
+                <span style={{ color: '#6F4E37', fontWeight: '500' }}>
+                  {user.username || 'User'}
+                </span>
+                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>▼</span>
+              </div>
+            ) : (
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowAuth(true)}
+                style={{
+                  padding: '0.5rem 1.5rem',
+                  fontSize: '1rem',
+                }}
+              >
+                Sign In
+              </button>
+            )}
+            
+            {showProfileDropdown && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '0.5rem',
+                  background: 'white',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                  minWidth: '200px',
+                  zIndex: 1000,
+                }}
+              >
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    setShowProfile(true);
+                    setShowProfileDropdown(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: 'none',
+                    background: 'none',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                    borderBottom: '1px solid #e2e8f0',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  👤 My Profile
+                </button>
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    setShowAdminTools(true);
+                    setShowProfileDropdown(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: 'none',
+                    background: 'none',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                    borderBottom: '1px solid #e2e8f0',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  🛠️ Admin Tools
+                </button>
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    handleSignOut();
+                    setShowProfileDropdown(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    border: 'none',
+                    background: 'none',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    color: '#dc2626',
+                    transition: 'background 0.2s',
+                    borderRadius: '0 0 8px 8px',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#fee2e2'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  🚪 Sign Out
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      <main className="main-content">
+        <div className="container">
+          <Stats />
+
+          <div className="actions-bar">
+            {user ? (
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setSelectedShop(null);
+                  setEditingReview(null);
+                  setShowReviewForm(true);
+                }}
+              >
+                + Add Coffee Shop & Review
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowAuth(true)}
+              >
+                Sign In to Add Reviews
+              </button>
+            )}
+            
+            <div className="view-toggle">
+              <button
+                className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
+                onClick={() => setViewMode('list')}
+              >
+                📋 List View
+              </button>
+              <button
+                className={`view-toggle-btn ${viewMode === 'map' ? 'active' : ''}`}
+                onClick={() => setViewMode('map')}
+              >
+                🗺️ Map View
+              </button>
+            </div>
+          </div>
+
+          {showReviewForm && (
+            <div className="modal-overlay" onClick={handleReviewFormCancel}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <ReviewForm
+                  coffeeShop={selectedShop}
+                  review={editingReview}
+                  onCancel={handleReviewFormCancel}
+                  onSuccess={handleReviewFormSuccess}
+                />
+              </div>
+            </div>
+          )}
+
+          {showProfile && <Profile onClose={() => setShowProfile(false)} />}
+          {showAdminTools && <AdminTools onClose={() => setShowAdminTools(false)} />}
+          
+          {showAuth && (
+            <div className="modal-overlay" onClick={() => setShowAuth(false)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <Auth onSuccess={handleAuthSuccess} />
+              </div>
+            </div>
+          )}
+
+          {viewMode === 'list' ? (
+            <>
+              <SearchBar
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                minRating={minRating}
+                onMinRatingChange={setMinRating}
+                sortBy={sortBy}
+                onSortChange={setSortBy}
+              />
+
+              <CoffeeList
+                searchQuery={searchQuery}
+                minRating={minRating}
+                sortBy={sortBy}
+                currentUserId={user?.id}
+                onEditReview={handleEditReview}
+                onDeleteReview={handleDeleteReview}
+              />
+            </>
+          ) : (
+            <CoffeeShopMap coffeeShops={data?.coffeeShops || []} />
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default App;
+
