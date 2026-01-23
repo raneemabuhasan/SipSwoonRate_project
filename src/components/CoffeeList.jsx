@@ -5,7 +5,7 @@ import ReviewCard from './ReviewCard';
 import StarRating from './StarRating';
 import { calculateAverageRating } from '../utils/helpers';
 
-export default function CoffeeList({ searchQuery, minRating, sortBy, currentUserId, onEditReview, onDeleteReview }) {
+export default function CoffeeList({ searchQuery, minRating, sortBy, currentUserId, onEditReview, onDeleteReview, onShowAuth }) {
   const { data, isLoading, error } = db.useQuery({
     coffeeShops: {
       reviews: {
@@ -42,6 +42,15 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
   const allFavorites = data?.favorites || [];
 
   const toggleFavorite = async (shopId) => {
+    // Check if user is signed in
+    if (!currentUserId) {
+      const shouldSignIn = window.confirm('Sign in to add coffee shops to your favorites!\n\nWould you like to sign in now?');
+      if (shouldSignIn && onShowAuth) {
+        onShowAuth();
+      }
+      return;
+    }
+
     try {
       const existingFavorite = allFavorites.find(
         (fav) => fav.user?.id === currentUserId && fav.coffeeShop?.id === shopId
@@ -103,9 +112,10 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
   });
 
   // Filter by search query
-  if (searchQuery) {
+  if (searchQuery && searchQuery.trim()) {
+    const trimmedQuery = searchQuery.trim().toLowerCase();
     shopsWithRatings = shopsWithRatings.filter((shop) =>
-      shop.name.toLowerCase().includes(searchQuery.toLowerCase())
+      shop.name && shop.name.toLowerCase().includes(trimmedQuery)
     );
   }
 
@@ -142,6 +152,34 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
     <div className="coffee-list">
       {sortedShops.map((shop) => (
         <div key={shop.id} className="coffee-shop-card">
+          {/* Stats section for this coffee shop */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr 1fr', 
+            gap: '1rem', 
+            marginBottom: '1.5rem',
+            padding: '1rem',
+            background: '#f8fafc',
+            borderRadius: '8px'
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '2rem', fontWeight: '700', color: '#6F4E37' }}>
+                {shop.reviewCount}
+              </div>
+              <div style={{ fontSize: '0.9rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Total Reviews
+              </div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '2rem', fontWeight: '700', color: '#6F4E37' }}>
+                {shop.avgRating > 0 ? shop.avgRating.toFixed(1) : 'N/A'}
+              </div>
+              <div style={{ fontSize: '0.9rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Average Rating
+              </div>
+            </div>
+          </div>
+
           <div className="shop-header">
             <div className="shop-info">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

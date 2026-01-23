@@ -93,6 +93,11 @@ export default function ReviewForm({ coffeeShop, review, onCancel, onSuccess }) 
 
       if (review) {
         // Update existing review
+        // Verify ownership before updating
+        if (review.reviewer?.id !== userId) {
+          throw new Error('You can only edit your own reviews');
+        }
+        
         await db.transact([
           db.tx.reviews[review.id].update({
             rating,
@@ -106,31 +111,89 @@ export default function ReviewForm({ coffeeShop, review, onCancel, onSuccess }) 
         let shopId = coffeeShop?.id;
 
         if (isCreatingShop) {
-          // Create shop and review together in one transaction
-          const newShopId = id();
-          const newReviewId = id();
-          
-          const shopData = {
-            name: shopName.trim(),
-            location: location.trim() || undefined,
-            createdAt: Date.now(),
-          };
+          // Check for duplicate coffee shops before creating
+          const { data: existingShops } = await db.queryOnce({
+            coffeeShops: {},
+          });
 
-          // Add coordinates if provided
-          if (latitude && longitude) {
-            shopData.latitude = parseFloat(latitude);
-            shopData.longitude = parseFloat(longitude);
+          const trimmedShopName = shopName.trim().toLowerCase();
+          const trimmedLocation = location.trim().toLowerCase();
+
+          // Find potential duplicates by name and location
+          const duplicate = existingShops?.coffeeShops?.find((shop) => {
+            const shopNameMatch = shop.name?.toLowerCase() === trimmedShopName;
+            
+            // If location is provided, check for location match
+            if (trimmedLocation) {
+              const shopLocationMatch = shop.location?.toLowerCase() === trimmedLocation;
+              return shopNameMatch && shopLocationMatch;
+            }
+            
+            // If no location provided, just check name
+            return shopNameMatch;
+          });
+
+          if (duplicate) {
+            const duplicateInfo = duplicate.location 
+              ? `"${duplicate.name}" at ${duplicate.location}` 
+              : `"${duplicate.name}"`;
+            
+            const shouldUsExisting = window.confirm(
+              `A coffee shop ${duplicateInfo} already exists.\n\n` +
+              `Would you like to add your review to the existing shop instead of creating a duplicate?`
+            );
+
+            if (shouldUsExisting) {
+              // Use the existing shop for the review
+              shopId = duplicate.id;
+              setIsCreatingShop(false);
+            } else {
+              // User wants to create a new shop anyway (maybe different location)
+              throw new Error('Please use a different name or location to avoid duplicates');
+            }
           }
 
-          await db.transact([
-            db.tx.coffeeShops[newShopId].update(shopData).link({ createdBy: userId }),
-            db.tx.reviews[newReviewId].update({
-              rating,
-              text: text.trim() || undefined,
-              photoUrl: photoPreview || undefined,
+          if (isCreatingShop && !shopId) {
+            // Create shop and review together in one transaction
+            const newShopId = id();
+            const newReviewId = id();
+            
+            const shopData = {
+              name: shopName.trim(),
+              location: location.trim() || undefined,
               createdAt: Date.now(),
-            }).link({ shop: newShopId, reviewer: userId }),
-          ]);
+            };
+
+            // Add coordinates if provided
+            if (latitude && longitude) {
+              shopData.latitude = parseFloat(latitude);
+              shopData.longitude = parseFloat(longitude);
+            }
+
+            await db.transact([
+              db.tx.coffeeShops[newShopId].update(shopData).link({ createdBy: userId }),
+              db.tx.reviews[newReviewId].update({
+                rating,
+                text: text.trim() || undefined,
+                photoUrl: photoPreview || undefined,
+                createdAt: Date.now(),
+              }).link({ shop: newShopId, reviewer: userId }),
+            ]);
+          } else {
+            // Create review for existing shop (either originally existing or user chose to use duplicate)
+            if (!shopId) {
+              throw new Error('Coffee shop is required');
+            }
+            const newReviewId = id();
+            await db.transact([
+              db.tx.reviews[newReviewId].update({
+                rating,
+                text: text.trim() || undefined,
+                photoUrl: photoPreview || undefined,
+                createdAt: Date.now(),
+              }).link({ shop: shopId, reviewer: userId }),
+            ]);
+          }
         } else {
           // Create review for existing shop
           if (!shopId) {

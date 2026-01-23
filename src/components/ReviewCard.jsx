@@ -3,7 +3,11 @@ import StarRating from './StarRating';
 import { getTimeAgo } from '../utils/helpers';
 
 export default function ReviewCard({ review, currentUserId, onEdit, onDelete }) {
-  const isOwner = review.reviewer?.id === currentUserId;
+  // Only show edit/delete buttons if:
+  // 1. User is logged in (currentUserId exists)
+  // 2. Review has a reviewer linked to it
+  // 3. The reviewer's ID matches the current user's ID
+  const isOwner = currentUserId && review.reviewer?.id && review.reviewer.id === currentUserId;
 
   return (
     <div className="review-card">

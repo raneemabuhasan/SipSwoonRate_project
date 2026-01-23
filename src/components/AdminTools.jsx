@@ -8,6 +8,10 @@ export default function AdminTools({ onClose }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [shopsExist, setShopsExist] = useState(null);
+  const [duplicates, setDuplicates] = useState([]);
+  const [duplicateLoading, setDuplicateLoading] = useState(false);
+  const [duplicateMessage, setDuplicateMessage] = useState('');
+  const [duplicateError, setDuplicateError] = useState('');
 
   const handleCheckShops = async () => {
     setLoading(true);
@@ -51,6 +55,130 @@ export default function AdminTools({ onClose }) {
       setError(err.message || 'Failed to seed coffee shops');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFindDuplicates = async () => {
+    setDuplicateLoading(true);
+    setDuplicateError('');
+    setDuplicateMessage('');
+    setDuplicates([]);
+
+    try {
+      // Fetch all coffee shops with their reviews
+      const { data } = await db.queryOnce({
+        coffeeShops: {
+          reviews: {
+            reviewer: {},
+          },
+        },
+      });
+
+      const shops = data?.coffeeShops || [];
+      
+      if (shops.length === 0) {
+        setDuplicateMessage('No coffee shops found in database');
+        return;
+      }
+
+      // Group shops by normalized name and location
+      const groupedShops = {};
+      
+      shops.forEach((shop) => {
+        const normalizedName = shop.name?.toLowerCase().trim() || '';
+        const normalizedLocation = shop.location?.toLowerCase().trim() || '';
+        
+        // Create a unique key for grouping
+        const key = `${normalizedName}|||${normalizedLocation}`;
+        
+        if (!groupedShops[key]) {
+          groupedShops[key] = [];
+        }
+        groupedShops[key].push(shop);
+      });
+
+      // Filter out groups with only one shop (not duplicates)
+      const duplicateGroups = Object.entries(groupedShops)
+        .filter(([_, shops]) => shops.length > 1)
+        .map(([key, shops]) => {
+          const [name, location] = key.split('|||');
+          return {
+            name,
+            location,
+            shops: shops.map(shop => ({
+              ...shop,
+              reviewCount: shop.reviews?.length || 0,
+            })),
+          };
+        });
+
+      if (duplicateGroups.length === 0) {
+        setDuplicateMessage('✅ No duplicates found! Your database is clean.');
+      } else {
+        setDuplicates(duplicateGroups);
+        setDuplicateMessage(`Found ${duplicateGroups.length} duplicate group(s) with ${duplicateGroups.reduce((sum, g) => sum + g.shops.length, 0)} total duplicate shops.`);
+      }
+    } catch (err) {
+      console.error('Error finding duplicates:', err);
+      setDuplicateError('Failed to find duplicates: ' + err.message);
+    } finally {
+      setDuplicateLoading(false);
+    }
+  };
+
+  const handleMergeDuplicates = async (duplicateGroup, primaryShopId) => {
+    if (!window.confirm(
+      `Are you sure you want to merge all reviews into the selected shop and delete the duplicates?\n\n` +
+      `This will:\n` +
+      `- Move all reviews to the primary shop\n` +
+      `- Delete the duplicate shops\n` +
+      `- This action cannot be undone!`
+    )) {
+      return;
+    }
+
+    setDuplicateLoading(true);
+    setDuplicateError('');
+
+    try {
+      const transactions = [];
+      let totalReviewsMoved = 0;
+
+      // For each shop in the duplicate group
+      for (const shop of duplicateGroup.shops) {
+        if (shop.id === primaryShopId) {
+          // Skip the primary shop
+          continue;
+        }
+
+        // Move all reviews from this shop to the primary shop
+        if (shop.reviews && shop.reviews.length > 0) {
+          for (const review of shop.reviews) {
+            transactions.push(
+              db.tx.reviews[review.id].update({
+                shop: primaryShopId,
+              })
+            );
+            totalReviewsMoved++;
+          }
+        }
+
+        // Delete the duplicate shop
+        transactions.push(db.tx.coffeeShops[shop.id].delete());
+      }
+
+      if (transactions.length > 0) {
+        await db.transact(transactions);
+        setDuplicateMessage(`✅ Successfully merged ${totalReviewsMoved} reviews and removed ${duplicateGroup.shops.length - 1} duplicate shop(s)!`);
+        
+        // Refresh the duplicate list
+        setTimeout(() => handleFindDuplicates(), 1000);
+      }
+    } catch (err) {
+      console.error('Error merging duplicates:', err);
+      setDuplicateError('Failed to merge duplicates: ' + err.message);
+    } finally {
+      setDuplicateLoading(false);
     }
   };
 
@@ -138,6 +266,118 @@ export default function AdminTools({ onClose }) {
               📍 Includes real addresses and GPS coordinates
             </p>
           </div>
+        </div>
+
+        {/* Duplicate Finder Section */}
+        <div className="admin-section" style={{ marginTop: '2rem' }}>
+          <h3>🔍 Find & Merge Duplicates</h3>
+          <p style={{ fontSize: '0.95rem', color: '#64748b', marginBottom: '1rem' }}>
+            Scan for duplicate coffee shops (same name and location) and merge them into a single entry.
+          </p>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <button
+              onClick={handleFindDuplicates}
+              disabled={duplicateLoading}
+              className="btn btn-primary"
+            >
+              {duplicateLoading ? '🔍 Scanning...' : '🔍 Find Duplicates'}
+            </button>
+          </div>
+
+          {duplicateMessage && (
+            <div className="success-message" style={{ marginBottom: '1rem' }}>
+              {duplicateMessage}
+            </div>
+          )}
+
+          {duplicateError && (
+            <div className="error-message" style={{ marginBottom: '1rem' }}>
+              {duplicateError}
+            </div>
+          )}
+
+          {duplicates.length > 0 && (
+            <div style={{ marginTop: '1.5rem' }}>
+              <h4 style={{ marginBottom: '1rem' }}>Found Duplicates:</h4>
+              {duplicates.map((group, groupIndex) => (
+                <div
+                  key={groupIndex}
+                  style={{
+                    background: '#fff7ed',
+                    border: '2px solid #fdba74',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <strong style={{ color: '#1e293b' }}>
+                      {group.name || 'Unnamed Shop'}
+                    </strong>
+                    {group.location && (
+                      <div style={{ fontSize: '0.9rem', color: '#64748b', marginTop: '0.25rem' }}>
+                        📍 {group.location}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: '0.9rem', color: '#dc2626', marginBottom: '1rem' }}>
+                    ⚠️ {group.shops.length} duplicate entries found
+                  </div>
+
+                  {group.shops.map((shop, shopIndex) => (
+                    <div
+                      key={shop.id}
+                      style={{
+                        background: 'white',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        padding: '0.75rem',
+                        marginBottom: '0.5rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                          Shop #{shopIndex + 1}
+                        </div>
+                        <div style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>
+                          📝 {shop.reviewCount} review{shop.reviewCount !== 1 ? 's' : ''}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem' }}>
+                          ID: {shop.id.substring(0, 8)}...
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleMergeDuplicates(group, shop.id)}
+                        disabled={duplicateLoading}
+                        className="btn btn-primary btn-small"
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        Keep This One
+                      </button>
+                    </div>
+                  ))}
+
+                  <div
+                    style={{
+                      background: '#f1f5f9',
+                      borderRadius: '6px',
+                      padding: '0.75rem',
+                      marginTop: '0.75rem',
+                      fontSize: '0.85rem',
+                      color: '#475569',
+                    }}
+                  >
+                    💡 Click "Keep This One" on the shop you want to keep. All reviews from other duplicates will be moved to it, and the duplicates will be deleted.
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'flex-end' }}>

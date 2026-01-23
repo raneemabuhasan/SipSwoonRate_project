@@ -3,7 +3,6 @@ import { db } from './db';
 import Auth from './components/Auth';
 import CoffeeList from './components/CoffeeList';
 import SearchBar from './components/SearchBar';
-import Stats from './components/Stats';
 import ReviewForm from './components/ReviewForm';
 import Profile from './components/Profile';
 import CoffeeShopMap from './components/CoffeeShopMap';
@@ -54,6 +53,17 @@ function App() {
   };
 
   const handleEditReview = (review) => {
+    // Verify ownership before allowing edit
+    if (!user?.id) {
+      alert('You must be signed in to edit a review');
+      return;
+    }
+    
+    if (review.reviewer?.id !== user.id) {
+      alert('You can only edit your own reviews');
+      return;
+    }
+    
     setEditingReview(review);
     // review.shop might be a ref object, get the actual shop data
     setSelectedShop(review.shop?.id ? { id: review.shop.id } : review.shop);
@@ -66,8 +76,39 @@ function App() {
       return;
     }
 
+    if (!user?.id) {
+      alert('You must be signed in to delete a review');
+      return;
+    }
+
     try {
       console.log('Deleting review:', reviewId);
+      
+      // First, verify ownership by fetching the review
+      const { data: reviewData } = await db.queryOnce({
+        reviews: {
+          $: {
+            where: {
+              id: reviewId,
+            },
+          },
+          reviewer: {},
+        },
+      });
+
+      if (!reviewData?.reviews || reviewData.reviews.length === 0) {
+        alert('Review not found');
+        return;
+      }
+
+      const review = reviewData.reviews[0];
+      
+      // Verify that the current user is the owner of the review
+      if (review.reviewer?.id !== user.id) {
+        alert('You can only delete your own reviews');
+        console.error('Unauthorized delete attempt: User', user.id, 'tried to delete review owned by', review.reviewer?.id);
+        return;
+      }
       
       // Delete the review - InstantDB will automatically update all queries
       const result = await db.transact([db.tx.reviews[reviewId].delete()]);
@@ -258,8 +299,6 @@ function App() {
 
       <main className="main-content">
         <div className="container">
-          <Stats />
-
           <div className="actions-bar">
             {user ? (
               <button
@@ -326,6 +365,7 @@ function App() {
               <SearchBar
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                coffeeShops={data?.coffeeShops || []}
                 minRating={minRating}
                 onMinRatingChange={setMinRating}
                 sortBy={sortBy}
@@ -339,6 +379,7 @@ function App() {
                 currentUserId={user?.id}
                 onEditReview={handleEditReview}
                 onDeleteReview={handleDeleteReview}
+                onShowAuth={() => setShowAuth(true)}
               />
             </>
           ) : (
