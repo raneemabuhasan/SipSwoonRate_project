@@ -87,6 +87,26 @@ export const coffeeShopsData = [
     longitude: -73.9989,
   },
 
+  // Boston
+  {
+    name: "Caffè Nero - Newbury Street",
+    location: "175 Newbury St, Boston, MA 02116",
+    latitude: 42.3505,
+    longitude: -71.0779,
+  },
+  {
+    name: "Thinking Cup",
+    location: "165 Tremont St, Boston, MA 02111",
+    latitude: 42.3553,
+    longitude: -71.0630,
+  },
+  {
+    name: "George Howell Coffee",
+    location: "505 Washington St, Boston, MA 02111",
+    latitude: 42.3511,
+    longitude: -71.0612,
+  },
+
   // Seattle
   {
     name: "Espresso Vivace - Capitol Hill",
@@ -160,12 +180,36 @@ export const coffeeShopsData = [
   },
 ];
 
-// Function to seed coffee shops into the database
+// Function to seed coffee shops into the database (skips duplicates)
 export async function seedCoffeeShops(userId) {
   try {
     console.log('Starting to seed coffee shops...');
     
-    const transactions = coffeeShopsData.map(shop => {
+    // First, fetch all existing coffee shops
+    const { data } = await db.queryOnce({
+      coffeeShops: {},
+    });
+    
+    const existingShops = data?.coffeeShops || [];
+    console.log(`Found ${existingShops.length} existing coffee shops in database`);
+    
+    // Filter out shops that already exist (by name and location)
+    const newShops = coffeeShopsData.filter(shop => {
+      const exists = existingShops.some(existing => 
+        existing.name === shop.name && existing.location === shop.location
+      );
+      return !exists;
+    });
+    
+    console.log(`${newShops.length} new shops to add`);
+    
+    if (newShops.length === 0) {
+      console.log('No new shops to add - all shops already exist!');
+      return { success: true, count: 0, message: 'All shops already exist' };
+    }
+    
+    // Create transactions only for new shops
+    const transactions = newShops.map(shop => {
       const shopId = id();
       return db.tx.coffeeShops[shopId]
         .update({
@@ -179,8 +223,8 @@ export async function seedCoffeeShops(userId) {
     });
 
     await db.transact(transactions);
-    console.log(`Successfully seeded ${coffeeShopsData.length} coffee shops!`);
-    return { success: true, count: coffeeShopsData.length };
+    console.log(`Successfully seeded ${newShops.length} new coffee shops!`);
+    return { success: true, count: newShops.length };
   } catch (error) {
     console.error('Error seeding coffee shops:', error);
     return { success: false, error: error.message };

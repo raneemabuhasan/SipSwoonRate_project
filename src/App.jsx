@@ -7,6 +7,8 @@ import ReviewForm from './components/ReviewForm';
 import Profile from './components/Profile';
 import CoffeeShopMap from './components/CoffeeShopMap';
 import AdminTools from './components/AdminTools';
+import HomePage from './components/HomePage';
+import AboutModal from './components/AboutModal';
 import { clearRememberMeToken, clearRememberedUsername } from './utils/auth';
 
 function App() {
@@ -29,6 +31,8 @@ function App() {
   const [showAdminTools, setShowAdminTools] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'map'
+  const [showHomePage, setShowHomePage] = useState(true); // Start with home page
+  const [showAboutModal, setShowAboutModal] = useState(false);
 
   const handleSignOut = async () => {
     // Clear remember me data from localStorage
@@ -147,9 +151,43 @@ function App() {
       <nav className="navbar" onClick={(e) => e.stopPropagation()}>
         <div className="container">
           <div className="nav-brand">
-            <h1>☕ Sip Swoon - Rate Your Coffee</h1>
+            <h1 
+              onClick={() => setShowHomePage(true)}
+              style={{ 
+                cursor: 'pointer',
+                transition: 'color 0.2s ease',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.color = '#8D7B6D'}
+              onMouseLeave={(e) => e.currentTarget.style.color = '#6F4E37'}
+            >
+              ☕ Sip Swoon - Rate Your Coffee
+            </h1>
           </div>
-          <div className="nav-menu" style={{ position: 'relative' }}>
+          <div className="nav-menu" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button
+              onClick={() => setShowAboutModal(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#6F4E37',
+                fontSize: '1rem',
+                fontWeight: '500',
+                cursor: 'pointer',
+                padding: '0.5rem 1rem',
+                borderRadius: '6px',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f8fafc';
+                e.currentTarget.style.color = '#5A3D2D';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'none';
+                e.currentTarget.style.color = '#6F4E37';
+              }}
+            >
+              About
+            </button>
             {user ? (
               <div
                 onClick={() => setShowProfileDropdown(!showProfileDropdown)}
@@ -297,9 +335,15 @@ function App() {
         </div>
       </nav>
 
-      <main className="main-content">
-        <div className="container">
-          <div className="actions-bar">
+      {showHomePage ? (
+        <HomePage 
+          onBrowseCafes={() => setShowHomePage(false)} 
+          onShowAbout={() => setShowAboutModal(true)}
+        />
+      ) : (
+        <main className="main-content">
+          <div className="container">
+            <div className="actions-bar">
             {user ? (
               <button
                 className="btn btn-primary"
@@ -387,6 +431,11 @@ function App() {
           )}
         </div>
       </main>
+      )}
+
+      {showAboutModal && (
+        <AboutModal onClose={() => setShowAboutModal(false)} />
+      )}
     </div>
   );
 }
