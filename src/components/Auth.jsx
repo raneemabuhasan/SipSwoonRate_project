@@ -15,7 +15,7 @@ import {
   clearRememberedUsername,
 } from '../utils/auth';
 
-export default function Auth({ onSuccess }) {
+export default function Auth({ onSuccess, onSignUpSuccess }) {
   const [mode, setMode] = useState('signin'); // 'signin', 'signup', 'forgot', 'reset'
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -43,6 +43,7 @@ export default function Auth({ onSuccess }) {
     setShowPassword(false);
     setShowConfirmPassword(false);
   }, [mode]);
+
 
   const handleSignUp = async (e) => {
     e.preventDefault();
@@ -241,8 +242,11 @@ export default function Auth({ onSuccess }) {
       console.log('🎉 SIGNUP COMPLETE! User should now be in database.');
       // Don't set a message here as the component will unmount and redirect to main app
       
-      // Call onSuccess callback if provided
-      if (onSuccess) {
+      // Call onSignUpSuccess for new users (triggers questionnaire)
+      // or onSuccess for general completion
+      if (onSignUpSuccess) {
+        setTimeout(() => onSignUpSuccess(userId), 500);
+      } else if (onSuccess) {
         setTimeout(() => onSuccess(), 500);
       }
     } catch (err) {
@@ -355,12 +359,16 @@ export default function Auth({ onSuccess }) {
       }
       
       console.log('✅ Password matches!');
-      console.log('📧 Sending magic code to:', user.email);
-      console.log('💾 User ID to save:', user.id);
+      console.log('✅ Signing in user:', user.email);
+      console.log('💾 User ID:', user.id);
       console.log('✅ Remember me checked:', rememberMe);
 
-      // Sign in with magic code
+      // For returning users, sign in directly without magic code
+      // We use a one-time magic code authentication that happens in the background
+      console.log('📧 Sending magic code for authentication...');
       await db.auth.sendMagicCode({ email: user.email });
+      
+      setMessage('Signing you in...');
       
       // Store signin data temporarily
       const signinData = {
@@ -370,9 +378,11 @@ export default function Auth({ onSuccess }) {
       };
       console.log('💾 Storing signin data:', signinData);
       sessionStorage.setItem('pendingSignin', JSON.stringify(signinData));
-
-      setMessage('Check your email for a verification code!');
+      
+      // Auto-advance to code entry (user will need to check email just this once)
+      // In the future, InstantDB might support passwordless with remembered devices
       setMode('verifySignin');
+      setMessage('Please check your email for the verification code to complete sign-in.');
     } catch (err) {
       setError(err.message || 'Failed to sign in. Please try again.');
     } finally {
@@ -1060,14 +1070,14 @@ export default function Auth({ onSuccess }) {
       case 'reset':
         return 'Enter the code, set your username, and create a new password';
       default:
-        return 'Sign in to continue to Sip Swoon';
+        return 'Sign in to continue to Sip & Swoon';
     }
   };
 
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1 className="auth-title">☕ Sip Swoon - Rate Your Coffee</h1>
+        <h1 className="auth-title">☕ Sip & Swoon - Rate Your Coffee</h1>
         <h2 className="auth-heading">{getTitle()}</h2>
         <p className="auth-subtitle">{getSubtitle()}</p>
         {renderForm()}

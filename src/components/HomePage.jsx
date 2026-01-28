@@ -33,10 +33,11 @@ export default function HomePage({ onBrowseCafes, onShowAbout }) {
           fontWeight: '700',
           color: '#6F4E37',
           marginBottom: '1rem',
-          fontFamily: "'Poppins', sans-serif",
+          fontFamily: "'Playfair Display', serif",
           textShadow: '2px 2px 4px rgba(0,0,0,0.1)',
+          letterSpacing: '-0.02em',
         }}>
-          Sip Swoon
+          Sip & Swoon
         </h1>
 
         {/* Tagline */}

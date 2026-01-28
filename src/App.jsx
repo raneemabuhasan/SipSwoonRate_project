@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from './db';
+import { id } from '@instantdb/react';
 import Auth from './components/Auth';
 import CoffeeList from './components/CoffeeList';
 import SearchBar from './components/SearchBar';
@@ -9,7 +10,8 @@ import CoffeeShopMap from './components/CoffeeShopMap';
 import AdminTools from './components/AdminTools';
 import HomePage from './components/HomePage';
 import AboutModal from './components/AboutModal';
-import { clearRememberMeToken, clearRememberedUsername } from './utils/auth';
+import PreferenceQuestionnaire from './components/PreferenceQuestionnaire';
+import { clearRememberMeToken, clearRememberedUsername, isOwner } from './utils/auth';
 
 function App() {
   const { user } = db.useAuth();
@@ -20,6 +22,23 @@ function App() {
       reviews: {},
     },
   });
+
+  // Query current user's data including preferences
+  const { data: userData } = db.useQuery(
+    user?.id ? {
+      users: {
+        $: {
+          where: {
+            id: user.id,
+          },
+        },
+      },
+    } : null
+  );
+
+  const currentUserData = userData?.users?.[0];
+
+  // State declarations - must be before useEffects that use them
   const [searchQuery, setSearchQuery] = useState('');
   const [minRating, setMinRating] = useState(null);
   const [sortBy, setSortBy] = useState('newest');
@@ -33,6 +52,8 @@ function App() {
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'map'
   const [showHomePage, setShowHomePage] = useState(true); // Start with home page
   const [showAboutModal, setShowAboutModal] = useState(false);
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [newUserId, setNewUserId] = useState(null);
 
   const handleSignOut = async () => {
     // Clear remember me data from localStorage
@@ -143,6 +164,22 @@ function App() {
     setShowAuth(false);
   };
 
+  const handleSignUpSuccess = (userId) => {
+    setNewUserId(userId);
+    setShowAuth(false);
+    setShowQuestionnaire(true);
+  };
+
+  const handleQuestionnaireComplete = () => {
+    setShowQuestionnaire(false);
+    setNewUserId(null);
+  };
+
+  const handleQuestionnaireSkip = () => {
+    setShowQuestionnaire(false);
+    setNewUserId(null);
+  };
+
   return (
     <div 
       className="app"
@@ -160,7 +197,7 @@ function App() {
               onMouseEnter={(e) => e.currentTarget.style.color = '#8D7B6D'}
               onMouseLeave={(e) => e.currentTarget.style.color = '#6F4E37'}
             >
-              ☕ Sip Swoon - Rate Your Coffee
+              ☕ Sip & Swoon - Rate Your Coffee
             </h1>
           </div>
           <div className="nav-menu" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -286,27 +323,29 @@ function App() {
                 >
                   👤 My Profile
                 </button>
-                <button
-                  className="dropdown-item"
-                  onClick={() => {
-                    setShowAdminTools(true);
-                    setShowProfileDropdown(false);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    border: 'none',
-                    background: 'none',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'background 0.2s',
-                    borderBottom: '1px solid #e2e8f0',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  🛠️ Admin Tools
-                </button>
+                {isOwner(currentUserData?.email) && (
+                  <button
+                    className="dropdown-item"
+                    onClick={() => {
+                      setShowAdminTools(true);
+                      setShowProfileDropdown(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      border: 'none',
+                      background: 'none',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    🛠️ Admin Tools
+                  </button>
+                )}
                 <button
                   className="dropdown-item"
                   onClick={() => {
@@ -336,105 +375,118 @@ function App() {
       </nav>
 
       {showHomePage ? (
-        <HomePage 
-          onBrowseCafes={() => setShowHomePage(false)} 
-          onShowAbout={() => setShowAboutModal(true)}
-        />
-      ) : (
-        <main className="main-content">
-          <div className="container">
-            <div className="actions-bar">
-            {user ? (
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  setSelectedShop(null);
-                  setEditingReview(null);
-                  setShowReviewForm(true);
-                }}
-              >
-                + Add Coffee Shop & Review
-              </button>
-            ) : (
-              <button
-                className="btn btn-primary"
-                onClick={() => setShowAuth(true)}
-              >
-                Sign In to Add Reviews
-              </button>
-            )}
-            
-            <div className="view-toggle">
-              <button
-                className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
-                onClick={() => setViewMode('list')}
-              >
-                📋 List View
-              </button>
-              <button
-                className={`view-toggle-btn ${viewMode === 'map' ? 'active' : ''}`}
-                onClick={() => setViewMode('map')}
-              >
-                🗺️ Map View
-              </button>
-            </div>
-          </div>
-
-          {showReviewForm && (
-            <div className="modal-overlay" onClick={handleReviewFormCancel}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <ReviewForm
-                  coffeeShop={selectedShop}
-                  review={editingReview}
-                  onCancel={handleReviewFormCancel}
-                  onSuccess={handleReviewFormSuccess}
-                />
-              </div>
-            </div>
-          )}
-
-          {showProfile && <Profile onClose={() => setShowProfile(false)} />}
-          {showAdminTools && <AdminTools onClose={() => setShowAdminTools(false)} />}
-          
-          {showAuth && (
-            <div className="modal-overlay" onClick={() => setShowAuth(false)}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <Auth onSuccess={handleAuthSuccess} />
-              </div>
-            </div>
-          )}
-
-          {viewMode === 'list' ? (
-            <>
-              <SearchBar
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-                coffeeShops={data?.coffeeShops || []}
-                minRating={minRating}
-                onMinRatingChange={setMinRating}
-                sortBy={sortBy}
-                onSortChange={setSortBy}
-              />
-
-              <CoffeeList
-                searchQuery={searchQuery}
-                minRating={minRating}
-                sortBy={sortBy}
-                currentUserId={user?.id}
-                onEditReview={handleEditReview}
-                onDeleteReview={handleDeleteReview}
-                onShowAuth={() => setShowAuth(true)}
-              />
-            </>
+            <HomePage 
+              onBrowseCafes={() => setShowHomePage(false)} 
+              onShowAbout={() => setShowAboutModal(true)}
+            />
           ) : (
-            <CoffeeShopMap coffeeShops={data?.coffeeShops || []} />
-          )}
-        </div>
-      </main>
-      )}
+            <main className="main-content">
+              <div className="container">
+                <div className="actions-bar">
+                {user ? (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setSelectedShop(null);
+                      setEditingReview(null);
+                      setShowReviewForm(true);
+                    }}
+                  >
+                    + Add Coffee Shop & Review
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setShowAuth(true)}
+                  >
+                    Sign In to Add Reviews
+                  </button>
+                )}
+                
+                <div className="view-toggle">
+                  <button
+                    className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
+                    onClick={() => setViewMode('list')}
+                  >
+                    📋 List View
+                  </button>
+                  <button
+                    className={`view-toggle-btn ${viewMode === 'map' ? 'active' : ''}`}
+                    onClick={() => setViewMode('map')}
+                  >
+                    🗺️ Map View
+                  </button>
+                </div>
+              </div>
 
+              {showReviewForm && (
+                <div className="modal-overlay" onClick={handleReviewFormCancel}>
+                  <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                    <ReviewForm
+                      coffeeShop={selectedShop}
+                      review={editingReview}
+                      onCancel={handleReviewFormCancel}
+                      onSuccess={handleReviewFormSuccess}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {viewMode === 'list' ? (
+                <>
+                  <SearchBar
+                    searchQuery={searchQuery}
+                    onSearchChange={setSearchQuery}
+                    coffeeShops={data?.coffeeShops || []}
+                    minRating={minRating}
+                    onMinRatingChange={setMinRating}
+                    sortBy={sortBy}
+                    onSortChange={setSortBy}
+                  />
+
+                  <CoffeeList
+                    searchQuery={searchQuery}
+                    minRating={minRating}
+                    sortBy={sortBy}
+                    currentUserId={user?.id}
+                    currentUserData={currentUserData}
+                    onEditReview={handleEditReview}
+                    onDeleteReview={handleDeleteReview}
+                    onShowAuth={() => setShowAuth(true)}
+                  />
+                </>
+              ) : (
+                <CoffeeShopMap coffeeShops={data?.coffeeShops || []} />
+              )}
+              </div>
+            </main>
+          )}
+
+      {/* Modals that should work from anywhere */}
       {showAboutModal && (
         <AboutModal onClose={() => setShowAboutModal(false)} />
+      )}
+
+      {showAuth && (
+        <div className="modal-overlay" onClick={() => setShowAuth(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <Auth 
+              onSuccess={handleAuthSuccess}
+              onSignUpSuccess={handleSignUpSuccess}
+            />
+          </div>
+        </div>
+      )}
+
+      {showProfile && <Profile onClose={() => setShowProfile(false)} />}
+      {showAdminTools && <AdminTools onClose={() => setShowAdminTools(false)} />}
+
+      {showQuestionnaire && newUserId && (
+        <PreferenceQuestionnaire
+          userId={newUserId}
+          onComplete={handleQuestionnaireComplete}
+          onSkip={handleQuestionnaireSkip}
+        />
       )}
     </div>
   );

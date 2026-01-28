@@ -82,3 +82,8 @@ export function getRememberedUsername() {
 export function clearRememberedUsername() {
   localStorage.removeItem('rememberedUsername');
 }
+
+// Check if a user is the owner based on email
+export function isOwner(email) {
+  return email === 'raneem.abuhasan1@gmail.com';
+}

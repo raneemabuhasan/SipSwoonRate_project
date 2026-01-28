@@ -1,9 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../db';
 import { seedCoffeeShops, checkIfShopsExist, coffeeShopsData } from '../utils/seedCoffeeShops';
+import { isOwner } from '../utils/auth';
 
 export default function AdminTools({ onClose }) {
   const { user } = db.useAuth();
+  
+  // Query user data to get email
+  const { data: userData } = db.useQuery(
+    user?.id ? {
+      users: {
+        $: {
+          where: {
+            id: user.id,
+          },
+        },
+      },
+    } : {}
+  );
+  
+  const currentUserData = userData?.users?.[0];
+  
+  // Check ownership and prevent access if not owner
+  useEffect(() => {
+    if (currentUserData?.email && !isOwner(currentUserData.email)) {
+      // User is not owner, close the modal
+      onClose();
+    }
+  }, [currentUserData?.email, onClose]);
+  
+  // Early return if not owner
+  if (currentUserData?.email && !isOwner(currentUserData.email)) {
+    return null; // Don't render anything for non-owners
+  }
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');

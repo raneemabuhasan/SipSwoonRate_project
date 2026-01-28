@@ -83,7 +83,7 @@ export default function AboutModal({ onClose }) {
           fontFamily: "'Poppins', sans-serif",
           fontWeight: '700',
         }}>
-          About Sip Swoon
+          About Sip & Swoon
         </h2>
 
         {/* Description */}
@@ -93,7 +93,7 @@ export default function AboutModal({ onClose }) {
           fontSize: '1rem',
         }}>
           <p style={{ marginBottom: '1.5rem' }}>
-            Welcome to <strong style={{ color: '#6F4E37' }}>Sip Swoon</strong>, your ultimate companion for discovering and rating the best coffee shops in your area. Whether you're a casual coffee drinker or a devoted caffeine enthusiast, our platform helps you find your perfect cup of coffee.
+            Welcome to <strong style={{ color: '#6F4E37' }}>Sip & Swoon</strong>, your ultimate companion for discovering and rating the best coffee shops in your area. Whether you're a casual coffee drinker or a devoted caffeine enthusiast, our platform helps you find your perfect cup of coffee.
           </p>
 
           <p style={{ marginBottom: '1.5rem' }}>

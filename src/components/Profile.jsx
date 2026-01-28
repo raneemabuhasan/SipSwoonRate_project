@@ -3,6 +3,7 @@ import { id } from '@instantdb/react';
 import { db } from '../db';
 import ReviewCard from './ReviewCard';
 import StarRating from './StarRating';
+import { hashPassword, validateUsername, validatePassword } from '../utils/auth';
 
 export default function Profile({ onClose }) {
   const { user } = db.useAuth();
@@ -13,6 +14,12 @@ export default function Profile({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  
+  // For adding username/password to Google accounts
+  const [showAddCredentials, setShowAddCredentials] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const { data } = db.useQuery({
     reviews: {
@@ -26,6 +33,23 @@ export default function Profile({ onClose }) {
       },
     },
   });
+
+  // Query user data to check auth provider
+  const { data: userData } = db.useQuery(
+    user?.id ? {
+      users: {
+        $: {
+          where: {
+            id: user.id,
+          },
+        },
+      },
+    } : null
+  );
+
+  const currentUserData = userData?.users?.[0];
+  const isGoogleUser = currentUserData?.authProvider === 'google';
+  const hasPassword = !!currentUserData?.password;
 
   useEffect(() => {
     if (user) {
@@ -70,6 +94,81 @@ export default function Profile({ onClose }) {
       setMessage('Profile updated successfully!');
     } catch (err) {
       setError(err.message || 'Failed to update profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddCredentials = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setMessage('');
+
+    try {
+      // Validate username
+      const usernameError = validateUsername(newUsername);
+      if (usernameError) {
+        setError(usernameError);
+        setLoading(false);
+        return;
+      }
+
+      // Validate password
+      const passwordError = validatePassword(newPassword);
+      if (passwordError) {
+        setError(passwordError);
+        setLoading(false);
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        setError('Passwords do not match');
+        setLoading(false);
+        return;
+      }
+
+      // Check if username already exists
+      const { data: existingUsers } = await db.queryOnce({
+        users: {
+          $: {
+            where: {
+              username: newUsername,
+            },
+          },
+        },
+      });
+
+      if (existingUsers.users && existingUsers.users.length > 0) {
+        setError('Username already taken');
+        setLoading(false);
+        return;
+      }
+
+      // Hash the password
+      const hashedPassword = await hashPassword(newPassword);
+
+      // Update user with username and password
+      const lookupId = id();
+      await db.transact([
+        db.tx.users[user.id].update({
+          username: newUsername.trim(),
+          password: hashedPassword,
+        }),
+        db.tx.usernameLookups[lookupId].update({
+          username: newUsername.trim(),
+          email: user.email,
+          userId: user.id,
+        }),
+      ]);
+
+      setMessage('Username and password added successfully! You can now sign in with either Google or your username/password.');
+      setShowAddCredentials(false);
+      setNewUsername('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      setError(err.message || 'Failed to add credentials');
     } finally {
       setLoading(false);
     }
@@ -179,16 +278,23 @@ export default function Profile({ onClose }) {
             </div>
 
             <div className="form-group">
-              <label htmlFor="username">Username</label>
+              <label htmlFor="username">
+                Username {isGoogleUser && !currentUserData?.username && '(Optional for Google users)'}
+              </label>
               <input
                 id="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
-                required
+                placeholder={isGoogleUser && !currentUserData?.username ? "Add username (optional)" : "Enter your username"}
+                required={!isGoogleUser}
                 disabled={loading}
               />
+              {isGoogleUser && !currentUserData?.username && (
+                <small style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                  You can add a username here or use the "Add Username & Password" section below
+                </small>
+              )}
             </div>
 
             <div className="form-group">
@@ -237,6 +343,121 @@ export default function Profile({ onClose }) {
               </button>
             </div>
           </form>
+        )}
+
+        {activeTab === 'profile' && isGoogleUser && !hasPassword && (
+          <div style={{
+            marginTop: '2rem',
+            padding: '1.5rem',
+            background: '#FFF8E7',
+            borderRadius: '12px',
+            border: '2px solid #C9A961',
+          }}>
+            <h3 style={{ color: '#6F4E37', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              🔐 Add Username & Password
+            </h3>
+            <p style={{ color: '#8D7B6D', marginBottom: '1rem', fontSize: '0.95rem' }}>
+              You're currently signing in with Google. Add a username and password to enable traditional sign-in as a backup option.
+            </p>
+            
+            {!showAddCredentials ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setShowAddCredentials(true)}
+                style={{ marginTop: '0.5rem' }}
+              >
+                + Add Username & Password
+              </button>
+            ) : (
+              <form onSubmit={handleAddCredentials} style={{ marginTop: '1rem' }}>
+                <div className="form-group">
+                  <label htmlFor="newUsername">Username</label>
+                  <input
+                    id="newUsername"
+                    type="text"
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value)}
+                    placeholder="Choose a username"
+                    required
+                    disabled={loading}
+                  />
+                  <small style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                    3-20 characters, letters, numbers, and underscores only
+                  </small>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="newPassword">Password</label>
+                  <input
+                    id="newPassword"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Create a password"
+                    required
+                    disabled={loading}
+                  />
+                  <small style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                    At least 8 characters, with uppercase, lowercase, and number
+                  </small>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="confirmPassword">Confirm Password</label>
+                  <input
+                    id="confirmPassword"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm your password"
+                    required
+                    disabled={loading}
+                  />
+                </div>
+
+                {error && <div className="error-message">{error}</div>}
+                {message && <div className="success-message">{message}</div>}
+
+                <div className="form-actions" style={{ marginTop: '1rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowAddCredentials(false);
+                      setError('');
+                      setNewUsername('');
+                      setNewPassword('');
+                      setConfirmPassword('');
+                    }}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={loading}>
+                    {loading ? 'Adding...' : 'Add Credentials'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'profile' && isGoogleUser && hasPassword && (
+          <div style={{
+            marginTop: '2rem',
+            padding: '1.5rem',
+            background: '#E8F5E9',
+            borderRadius: '12px',
+            border: '2px solid #81C784',
+          }}>
+            <h3 style={{ color: '#2E7D32', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              ✅ Multiple Sign-In Options Enabled
+            </h3>
+            <p style={{ color: '#558B2F', fontSize: '0.95rem', margin: 0 }}>
+              You can sign in with either Google or your username/password.
+            </p>
+          </div>
         )}
 
         {activeTab === 'reviews' && (

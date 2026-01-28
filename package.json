@@ -8,7 +8,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@instantdb/react": "^0.15.0",
+    "@instantdb/react": "^0.22.114",
+    "@react-oauth/google": "^0.13.4",
     "leaflet": "^1.9.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

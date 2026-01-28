@@ -3,9 +3,11 @@ import { id } from '@instantdb/react';
 import { db } from '../db';
 import ReviewCard from './ReviewCard';
 import StarRating from './StarRating';
+import RecommendedSection from './RecommendedSection';
 import { calculateAverageRating } from '../utils/helpers';
+import { getRecommendedCafes } from '../utils/recommendationEngine';
 
-export default function CoffeeList({ searchQuery, minRating, sortBy, currentUserId, onEditReview, onDeleteReview, onShowAuth }) {
+export default function CoffeeList({ searchQuery, minRating, sortBy, currentUserId, currentUserData, onEditReview, onDeleteReview, onShowAuth }) {
   const { data, isLoading, error } = db.useQuery({
     coffeeShops: {
       reviews: {
@@ -148,8 +150,24 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
     );
   }
 
+  // Get recommendations if user has preferences
+  const userPreferences = currentUserData?.preferences;
+  const hasPreferences = currentUserData?.questionnaireCompleted && userPreferences;
+  const recommendedCafes = hasPreferences 
+    ? getRecommendedCafes(userPreferences, sortedShops, 5)
+    : [];
+
   return (
     <div className="coffee-list">
+      {/* Recommended Section */}
+      {hasPreferences && recommendedCafes.length > 0 && (
+        <RecommendedSection 
+          recommendedCafes={recommendedCafes}
+          userPreferences={userPreferences}
+        />
+      )}
+
+      {/* All Cafes */}
       {sortedShops.map((shop) => (
         <div key={shop.id} className="coffee-shop-card">
           {/* Stats section for this coffee shop */}
