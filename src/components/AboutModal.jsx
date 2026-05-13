@@ -93,39 +93,12 @@ export default function AboutModal({ onClose }) {
           fontSize: '1rem',
         }}>
           <p style={{ marginBottom: '1.5rem' }}>
-            Welcome to <strong style={{ color: '#6F4E37' }}>Sip & Swoon</strong>, your ultimate companion for discovering and rating the best coffee shops in your area. Whether you're a casual coffee drinker or a devoted caffeine enthusiast, our platform helps you find your perfect cup of coffee.
+            Welcome to <strong style={{ color: '#6F4E37' }}>Sip & Swoon</strong>, your ultimate companion for discovering the best coffee shops in your area. Whether you're a casual coffee drinker or a devoted caffeine enthusiast, our platform helps you find your perfect cup of coffee.
           </p>
 
           <p style={{ marginBottom: '1.5rem' }}>
             Share your experiences, read reviews from fellow coffee lovers, and explore new cafes on our interactive map. Rate your visits, save your favorites, and build a personalized collection of the coffee shops that make your day better.
           </p>
-
-          <div style={{
-            background: '#FFF8E7',
-            padding: '1.5rem',
-            borderRadius: '12px',
-            borderLeft: '4px solid #6F4E37',
-          }}>
-            <h3 style={{
-              color: '#6F4E37',
-              fontSize: '1.1rem',
-              marginBottom: '0.75rem',
-              fontWeight: '600',
-            }}>
-              What You Can Do:
-            </h3>
-            <ul style={{
-              margin: 0,
-              paddingLeft: '1.5rem',
-              color: '#5A5A5A',
-            }}>
-              <li style={{ marginBottom: '0.5rem' }}>Discover coffee shops with detailed ratings and reviews</li>
-              <li style={{ marginBottom: '0.5rem' }}>View locations on an interactive map</li>
-              <li style={{ marginBottom: '0.5rem' }}>Share your experiences with photos and ratings</li>
-              <li style={{ marginBottom: '0.5rem' }}>Save your favorite spots for easy access</li>
-              <li>Connect with a community of coffee enthusiasts</li>
-            </ul>
-          </div>
         </div>
 
         {/* Footer */}

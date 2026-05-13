@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { db } from '../db';
+import { validateUsername } from '../utils/auth';
 
 export default function PreferenceQuestionnaire({ userId, onComplete, onSkip }) {
   const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [usernameError, setUsernameError] = useState('');
   const [answers, setAnswers] = useState({
+    username: '',
     atmosphere: null,
     primaryUse: null,
     priceRange: null,
@@ -16,6 +19,12 @@ export default function PreferenceQuestionnaire({ userId, onComplete, onSkip }) 
 
   const questions = [
     {
+      id: 'username',
+      question: 'Choose a username (optional)',
+      type: 'username',
+      subtitle: 'This will be shown in the header instead of your email. You can skip or add one later in Profile.',
+    },
+    {
       id: 'atmosphere',
       question: 'What atmosphere do you prefer?',
       type: 'single',
@@ -26,27 +35,7 @@ export default function PreferenceQuestionnaire({ userId, onComplete, onSkip }) 
         { value: 'quiet', label: 'Quiet', emoji: '🤫' },
       ]
     },
-    {
-      id: 'primaryUse',
-      question: 'What will you primarily use cafes for?',
-      type: 'single',
-      options: [
-        { value: 'work', label: 'Work/Study', emoji: '💻' },
-        { value: 'social', label: 'Socializing', emoji: '👥' },
-        { value: 'dates', label: 'Dates', emoji: '💕' },
-        { value: 'quick-coffee', label: 'Quick Coffee', emoji: '⚡' },
-      ]
-    },
-    {
-      id: 'priceRange',
-      question: 'What\'s your price comfort level?',
-      type: 'single',
-      options: [
-        { value: '$', label: 'Budget-Friendly', emoji: '💵', desc: '$3-5 per drink' },
-        { value: '$$', label: 'Moderate', emoji: '💳', desc: '$5-7 per drink' },
-        { value: '$$$', label: 'Premium', emoji: '💎', desc: '$7+ per drink' },
-      ]
-    },
+    // Primary Use is not needed for the app, so we'll remove it and Money preference is not needed for the app, so we'll remove it
     {
       id: 'features',
       question: 'What features are must-haves?',
@@ -80,20 +69,11 @@ export default function PreferenceQuestionnaire({ userId, onComplete, onSkip }) 
         { value: 'any', label: 'I Love It All', emoji: '💖' },
       ]
     },
-    {
-      id: 'crowdLevel',
-      question: 'What\'s your ideal crowd level?',
-      type: 'single',
-      options: [
-        { value: 'bustling', label: 'Bustling', emoji: '🎉', desc: 'Lively energy' },
-        { value: 'moderate', label: 'Moderate', emoji: '👌', desc: 'Just right' },
-        { value: 'peaceful', label: 'Peaceful', emoji: '🧘', desc: 'Nice and quiet' },
-      ]
-    },
+    // How busy the cafe is not needed for the app, so we'll remove it
     {
       id: 'preferredTime',
-      question: 'When do you usually visit cafes?',
-      type: 'single',
+      question: 'Do you usually visit cafes during the day or night?',
+      type: 'multiple',
       options: [
         { value: 'morning', label: 'Morning', emoji: '🌅', desc: '6am-11am' },
         { value: 'afternoon', label: 'Afternoon', emoji: '☀️', desc: '11am-5pm' },
@@ -135,13 +115,23 @@ export default function PreferenceQuestionnaire({ userId, onComplete, onSkip }) 
 
   const handleSave = async () => {
     try {
+      const { username, ...preferences } = answers;
+      const updateData = {
+        preferences,
+        questionnaireCompleted: true,
+      };
+      if (username?.trim()) {
+        const err = validateUsername(username.trim());
+        if (err) {
+          setUsernameError(err);
+          return;
+        }
+        updateData.username = username.trim();
+      }
       await db.transact([
-        db.tx.users[userId].update({
-          preferences: answers,
-          questionnaireCompleted: true,
-        })
+        db.tx.users[userId].merge(updateData),
       ]);
-      
+
       if (onComplete) {
         onComplete(answers);
       }
@@ -152,6 +142,9 @@ export default function PreferenceQuestionnaire({ userId, onComplete, onSkip }) 
   };
 
   const canProceed = () => {
+    if (currentQ.type === 'username') {
+      return true; // Username is optional
+    }
     const answer = answers[currentQ.id];
     if (currentQ.type === 'multiple') {
       return true; // Multi-select can be empty
@@ -238,14 +231,46 @@ export default function PreferenceQuestionnaire({ userId, onComplete, onSkip }) 
           </p>
         )}
 
-        {/* Options */}
+        {/* Username input (special type) */}
+        {currentQ.type === 'username' ? (
+          <div style={{ marginTop: '2rem', marginBottom: '2rem' }}>
+            <input
+              type="text"
+              value={answers.username || ''}
+              onChange={(e) => {
+                setAnswers({ ...answers, username: e.target.value });
+                setUsernameError('');
+              }}
+              placeholder="e.g. coffee_lover"
+              style={{
+                width: '100%',
+                padding: '1rem 1.25rem',
+                fontSize: '1.1rem',
+                border: usernameError ? '2px solid #dc2626' : '2px solid #E5E0DC',
+                borderRadius: '12px',
+                outline: 'none',
+                transition: 'border-color 0.2s',
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#6F4E37';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = usernameError ? '#dc2626' : '#E5E0DC';
+              }}
+            />
+            {usernameError && (
+              <p style={{ color: '#dc2626', fontSize: '0.9rem', marginTop: '0.5rem' }}>{usernameError}</p>
+            )}
+          </div>
+        ) : (
+        /* Options */
         <div style={{
           display: 'grid',
           gap: '1rem',
           marginTop: '2rem',
           marginBottom: '2rem',
         }}>
-          {currentQ.options.map((option) => {
+          {currentQ.options?.map((option) => {
             const isSelected = currentQ.type === 'multiple'
               ? (answers[currentQ.id] || []).includes(option.value)
               : answers[currentQ.id] === option.value;
@@ -305,6 +330,7 @@ export default function PreferenceQuestionnaire({ userId, onComplete, onSkip }) 
             );
           })}
         </div>
+        )}
 
         {/* Navigation Buttons */}
         <div style={{

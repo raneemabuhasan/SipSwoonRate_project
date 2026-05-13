@@ -11,7 +11,7 @@ import AdminTools from './components/AdminTools';
 import HomePage from './components/HomePage';
 import AboutModal from './components/AboutModal';
 import PreferenceQuestionnaire from './components/PreferenceQuestionnaire';
-import { clearRememberMeToken, clearRememberedUsername, isOwner } from './utils/auth';
+import { clearRememberMeToken, isOwner } from './utils/auth';
 
 function App() {
   const { user } = db.useAuth();
@@ -58,7 +58,6 @@ function App() {
   const handleSignOut = async () => {
     // Clear remember me data from localStorage
     clearRememberMeToken();
-    clearRememberedUsername();
     
     // Clear remember me token from database
     if (user?.id) {
@@ -197,7 +196,7 @@ function App() {
               onMouseEnter={(e) => e.currentTarget.style.color = '#8D7B6D'}
               onMouseLeave={(e) => e.currentTarget.style.color = '#6F4E37'}
             >
-              ☕ Sip & Swoon - Rate Your Coffee
+              ☕ Sip & Swoon
             </h1>
           </div>
           <div className="nav-menu" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -240,9 +239,9 @@ function App() {
                 onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                {user.profilePhotoUrl ? (
+                {(currentUserData?.profilePhotoUrl || user.profilePhotoUrl) ? (
                   <img
-                    src={user.profilePhotoUrl}
+                    src={currentUserData?.profilePhotoUrl || user.profilePhotoUrl}
                     alt="Profile"
                     style={{
                       width: '40px',
@@ -267,11 +266,11 @@ function App() {
                       fontSize: '1.2rem',
                     }}
                   >
-                    {user.username?.[0]?.toUpperCase() || '?'}
+                    {currentUserData?.username?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'}
                   </div>
                 )}
                 <span style={{ color: '#6F4E37', fontWeight: '500' }}>
-                  {user.username || 'User'}
+                  {currentUserData?.username || user.email || 'User'}
                 </span>
                 <span style={{ fontSize: '0.8rem', color: '#64748b' }}>▼</span>
               </div>
