@@ -11,7 +11,15 @@ import AdminTools from './components/AdminTools';
 import HomePage from './components/HomePage';
 import AboutModal from './components/AboutModal';
 import PreferenceQuestionnaire from './components/PreferenceQuestionnaire';
+import BackendDataPreview from './components/BackendDataPreview';
 import { clearRememberMeToken, isOwner } from './utils/auth';
+import { getBackendShops } from './utils/backendApi';
+
+const BACKEND_SHOP_QUERY = {
+  latitude: 37.7749,
+  longitude: -122.4194,
+  radius: 10,
+};
 
 function App() {
   const { user } = db.useAuth();
@@ -54,6 +62,54 @@ function App() {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [newUserId, setNewUserId] = useState(null);
+  const [showBackendPreview, setShowBackendPreview] = useState(false);
+  const [dataSource, setDataSource] = useState('instantdb');
+  const [backendShops, setBackendShops] = useState([]);
+  const [backendStatus, setBackendStatus] = useState('idle');
+  const [backendError, setBackendError] = useState('');
+
+  const isBackendSource = import.meta.env.DEV && dataSource === 'backend';
+
+  useEffect(() => {
+    if (!isBackendSource) {
+      return;
+    }
+
+    let isCurrentRequest = true;
+
+    const loadBackendShops = async () => {
+      try {
+        setBackendStatus('loading');
+        setBackendError('');
+
+        const response = await getBackendShops(BACKEND_SHOP_QUERY);
+        const normalizedShops = (response.data || []).map((shop) => ({
+          ...shop,
+          createdAt: shop.createdAt || 0,
+          reviews: shop.reviews || [],
+          favorites: shop.favorites || [],
+          backendSource: true,
+        }));
+
+        if (isCurrentRequest) {
+          setBackendShops(normalizedShops);
+          setBackendStatus('ready');
+        }
+      } catch (error) {
+        if (isCurrentRequest) {
+          setBackendError(error.message || 'Unable to load backend shops');
+          setBackendStatus('error');
+          setBackendShops([]);
+        }
+      }
+    };
+
+    loadBackendShops();
+
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [isBackendSource]);
 
   const handleSignOut = async () => {
     // Clear remember me data from localStorage
@@ -184,7 +240,7 @@ function App() {
       className="app"
       onClick={() => showProfileDropdown && setShowProfileDropdown(false)}
     >
-      <nav className="navbar" onClick={(e) => e.stopPropagation()}>
+      {/*<nav className="navbar" onClick={(e) => e.stopPropagation()}>
         <div className="container">
           <div className="nav-brand">
             <h1 
@@ -199,6 +255,7 @@ function App() {
               ☕ Sip & Swoon
             </h1>
           </div>
+
           <div className="nav-menu" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <button
               onClick={() => setShowAboutModal(true)}
@@ -372,7 +429,7 @@ function App() {
           </div>
         </div>
       </nav>
-
+*/}
       {showHomePage ? (
             <HomePage 
               onBrowseCafes={() => setShowHomePage(false)} 
@@ -403,6 +460,24 @@ function App() {
                 )}
                 
                 <div className="view-toggle">
+                  {import.meta.env.DEV && (
+                    <button
+                      className={`view-toggle-btn ${showBackendPreview ? 'active' : ''}`}
+                      onClick={() => setShowBackendPreview((current) => !current)}
+                    >
+                      API Preview
+                    </button>
+                  )}
+                  {import.meta.env.DEV && (
+                    <button
+                      className={`view-toggle-btn ${isBackendSource ? 'active' : ''}`}
+                      onClick={() => setDataSource((current) => (
+                        current === 'backend' ? 'instantdb' : 'backend'
+                      ))}
+                    >
+                      {isBackendSource ? 'Backend Data' : 'InstantDB Data'}
+                    </button>
+                  )}
                   <button
                     className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
                     onClick={() => setViewMode('list')}
@@ -417,6 +492,21 @@ function App() {
                   </button>
                 </div>
               </div>
+
+              {import.meta.env.DEV && showBackendPreview && <BackendDataPreview />}
+
+              {isBackendSource && (
+                <div className={`backend-source-banner ${backendStatus === 'error' ? 'error' : ''}`}>
+                  {backendStatus === 'loading' && 'Loading shops from the local backend...'}
+                  {backendStatus === 'ready' && `Showing ${backendShops.length} shops from the local backend mock API.`}
+                  {backendStatus === 'error' && (
+                    <>
+                      Backend data is not reachable. Start it with <code>npm run server</code>.
+                      {backendError && <span>{backendError}</span>}
+                    </>
+                  )}
+                </div>
+              )}
 
               {showReviewForm && (
                 <div className="modal-overlay" onClick={handleReviewFormCancel}>
@@ -436,7 +526,7 @@ function App() {
                   <SearchBar
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
-                    coffeeShops={data?.coffeeShops || []}
+                    coffeeShops={isBackendSource ? backendShops : data?.coffeeShops || []}
                     minRating={minRating}
                     onMinRatingChange={setMinRating}
                     sortBy={sortBy}
@@ -449,13 +539,18 @@ function App() {
                     sortBy={sortBy}
                     currentUserId={user?.id}
                     currentUserData={currentUserData}
+                    externalShops={isBackendSource ? backendShops : null}
+                    externalLabel={isBackendSource ? 'Backend mock API' : ''}
+                    isExternalData={isBackendSource}
+                    isExternalLoading={isBackendSource && backendStatus === 'loading'}
+                    externalError={isBackendSource && backendStatus === 'error' ? backendError : ''}
                     onEditReview={handleEditReview}
                     onDeleteReview={handleDeleteReview}
                     onShowAuth={() => setShowAuth(true)}
                   />
                 </>
               ) : (
-                <CoffeeShopMap coffeeShops={data?.coffeeShops || []} />
+                <CoffeeShopMap coffeeShops={isBackendSource ? backendShops : data?.coffeeShops || []} />
               )}
               </div>
             </main>
@@ -492,4 +587,3 @@ function App() {
 }
 
 export default App;
-

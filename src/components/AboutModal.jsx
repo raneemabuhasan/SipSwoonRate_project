@@ -71,17 +71,17 @@ export default function AboutModal({ onClose }) {
           fontSize: '3rem', 
           marginBottom: '1rem' 
         }}>
-          ☕
         </div>
 
         {/* Title */}
         <h2 style={{
           textAlign: 'center',
           color: '#6F4E37',
-          fontSize: '2rem',
+          fontSize: '2.25rem',
           marginBottom: '1.5rem',
-          fontFamily: "'Poppins', sans-serif",
+          fontFamily: "'Playfair Display', serif",
           fontWeight: '700',
+          letterSpacing: '0',
         }}>
           About Sip & Swoon
         </h2>
@@ -93,11 +93,22 @@ export default function AboutModal({ onClose }) {
           fontSize: '1rem',
         }}>
           <p style={{ marginBottom: '1.5rem' }}>
-            Welcome to <strong style={{ color: '#6F4E37' }}>Sip & Swoon</strong>, your ultimate companion for discovering the best coffee shops in your area. Whether you're a casual coffee drinker or a devoted caffeine enthusiast, our platform helps you find your perfect cup of coffee.
+            <strong style={{
+              color: '#6F4E37',
+              fontFamily: "'Poppins', sans-serif",
+            }}>
+              Sip & Swoon
+            </strong>, your ultimate companion for discovering
+            the best coffee shops in your area. Whether you're a casual coffee drinker or a devoted caffeine enthusiast,
+            our platform helps you find the perfect cup of coffee.
           </p>
 
+
           <p style={{ marginBottom: '1.5rem' }}>
-            Share your experiences, read reviews from fellow coffee lovers, and explore new cafes on our interactive map. Rate your visits, save your favorites, and build a personalized collection of the coffee shops that make your day better.
+            Share your experiences, read reviews from fellow coffee lovers,
+            and explore new cafes on our interactive map. Rate your visits,
+            save your favorites, and build a personalized collection of the
+            coffee shops that make your day better.
           </p>
         </div>
 
@@ -108,9 +119,9 @@ export default function AboutModal({ onClose }) {
           color: '#8D7B6D',
           fontSize: '0.9rem',
         }}>
-          <p style={{ margin: 0 }}>
-            Happy sipping! ☕
-          </p>
+          {/*<p style={{ margin: 0 }}>
+            Happy sipping!
+          </p> */}
         </div>
       </div>
     </div>

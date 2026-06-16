@@ -6,6 +6,12 @@ export default defineConfig({
   server: {
     port: 5173, // Fixed port to match InstantDB configuration
     strictPort: true, // Fail if port is already in use
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+    },
   },
   // Vite automatically handles SPA routing, but we need to ensure root path works
   build: {
@@ -14,4 +20,3 @@ export default defineConfig({
     }
   }
 })
-

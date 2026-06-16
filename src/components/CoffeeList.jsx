@@ -7,7 +7,21 @@ import RecommendedSection from './RecommendedSection';
 import { calculateAverageRating } from '../utils/helpers';
 import { getRecommendedCafes } from '../utils/recommendationEngine';
 
-export default function CoffeeList({ searchQuery, minRating, sortBy, currentUserId, currentUserData, onEditReview, onDeleteReview, onShowAuth }) {
+export default function CoffeeList({
+  searchQuery,
+  minRating,
+  sortBy,
+  currentUserId,
+  currentUserData,
+  externalShops = null,
+  externalLabel = '',
+  isExternalData = false,
+  isExternalLoading = false,
+  externalError = '',
+  onEditReview,
+  onDeleteReview,
+  onShowAuth,
+}) {
   const { data, isLoading, error } = db.useQuery({
     coffeeShops: {
       reviews: {
@@ -24,7 +38,7 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
     },
   });
 
-  if (isLoading) {
+  if (isExternalLoading || (!isExternalData && isLoading)) {
     return (
       <div className="loading-container">
         <div className="loading-spinner">Loading coffee shops...</div>
@@ -32,18 +46,23 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
     );
   }
 
-  if (error) {
+  if (externalError || (!isExternalData && error)) {
     return (
       <div className="error-container">
-        <p>Error loading coffee shops: {error.message}</p>
+        <p>Error loading coffee shops: {externalError || error.message}</p>
       </div>
     );
   }
 
-  const shops = data?.coffeeShops || [];
+  const shops = isExternalData ? externalShops || [] : data?.coffeeShops || [];
   const allFavorites = data?.favorites || [];
 
   const toggleFavorite = async (shopId) => {
+    if (isExternalData) {
+      alert('Favorites for backend-sourced shops will be connected in a later backend phase.');
+      return;
+    }
+
     // Check if user is signed in
     if (!currentUserId) {
       const shouldSignIn = window.confirm('Sign in to add coffee shops to your favorites!\n\nWould you like to sign in now?');
@@ -82,6 +101,11 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
   };
 
   const handleDeleteShop = async (shop) => {
+    if (isExternalData) {
+      alert('Backend-sourced shops are read-only for now.');
+      return;
+    }
+
     if (!window.confirm(`Are you sure you want to delete "${shop.name}"? This will also delete all its reviews.`)) {
       return;
     }
@@ -97,6 +121,7 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
   };
 
   const isShopCreator = (shop) => {
+    if (isExternalData) return false;
     return shop.createdBy?.id === currentUserId;
   };
 
@@ -170,6 +195,12 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
       {/* All Cafes */}
       {sortedShops.map((shop) => (
         <div key={shop.id} className="coffee-shop-card">
+          {isExternalData && (
+            <div className="external-source-tag">
+              {externalLabel || 'Backend data'} · read-only preview
+            </div>
+          )}
+
           {/* Stats section for this coffee shop */}
           <div style={{ 
             display: 'grid', 
@@ -204,16 +235,26 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
                 <h3 className="shop-name">{shop.name}</h3>
                 <button
                   onClick={() => toggleFavorite(shop.id)}
+                  disabled={isExternalData}
                   style={{
                     background: 'none',
                     border: 'none',
                     fontSize: '1.5rem',
-                    cursor: 'pointer',
+                    cursor: isExternalData ? 'not-allowed' : 'pointer',
+                    opacity: isExternalData ? 0.45 : 1,
                     transition: 'transform 0.2s',
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.2)'}
-                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                  title={isFavorite(shop.id) ? 'Remove from favorites' : 'Add to favorites'}
+                  onMouseEnter={(e) => {
+                    if (!isExternalData) e.currentTarget.style.transform = 'scale(1.2)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                  title={
+                    isExternalData
+                      ? 'Favorites are not connected to backend shops yet'
+                      : isFavorite(shop.id) ? 'Remove from favorites' : 'Add to favorites'
+                  }
                 >
                   {isFavorite(shop.id) ? '❤️' : '🤍'}
                 </button>
@@ -259,4 +300,3 @@ export default function CoffeeList({ searchQuery, minRating, sortBy, currentUser
     </div>
   );
 }
-
