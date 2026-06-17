@@ -235,6 +235,15 @@ function App() {
     setNewUserId(null);
   };
 
+  const handleReturnHome = () => {
+    setShowHomePage(true);
+    setShowReviewForm(false);
+    setEditingReview(null);
+    setSelectedShop(null);
+    setShowBackendPreview(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div 
       className="app"
@@ -439,59 +448,69 @@ function App() {
             <main className="main-content">
               <div className="container">
                 <div className="actions-bar">
-                {user ? (
                   <button
-                    className="btn btn-primary"
-                    onClick={() => {
-                      setSelectedShop(null);
-                      setEditingReview(null);
-                      setShowReviewForm(true);
-                    }}
+                    className="view-toggle-btn home-tab-btn"
+                    onClick={handleReturnHome}
+                    aria-label="Return to home page"
                   >
-                    + Add Coffee Shop & Review
+                    Home
                   </button>
-                ) : (
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => setShowAuth(true)}
-                  >
-                    Sign In to Add Reviews
-                  </button>
-                )}
-                
-                <div className="view-toggle">
-                  {import.meta.env.DEV && (
-                    <button
-                      className={`view-toggle-btn ${showBackendPreview ? 'active' : ''}`}
-                      onClick={() => setShowBackendPreview((current) => !current)}
-                    >
-                      API Preview
-                    </button>
-                  )}
-                  {import.meta.env.DEV && (
-                    <button
-                      className={`view-toggle-btn ${isBackendSource ? 'active' : ''}`}
-                      onClick={() => setDataSource((current) => (
-                        current === 'backend' ? 'instantdb' : 'backend'
-                      ))}
-                    >
-                      {isBackendSource ? 'Backend Data' : 'InstantDB Data'}
-                    </button>
-                  )}
-                  <button
-                    className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
-                    onClick={() => setViewMode('list')}
-                  >
-                    📋 List View
-                  </button>
-                  <button
-                    className={`view-toggle-btn ${viewMode === 'map' ? 'active' : ''}`}
-                    onClick={() => setViewMode('map')}
-                  >
-                    🗺️ Map View
-                  </button>
+
+                  <div className="browse-actions">
+                    {user ? (
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => {
+                          setSelectedShop(null);
+                          setEditingReview(null);
+                          setShowReviewForm(true);
+                        }}
+                      >
+                        + Add Coffee Shop & Review
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => setShowAuth(true)}
+                      >
+                        Sign In to Add Reviews
+                      </button>
+                    )}
+                    
+                    <div className="view-toggle">
+                      {import.meta.env.DEV && (
+                        <button
+                          className={`view-toggle-btn ${showBackendPreview ? 'active' : ''}`}
+                          onClick={() => setShowBackendPreview((current) => !current)}
+                        >
+                          API Preview
+                        </button>
+                      )}
+                      {import.meta.env.DEV && (
+                        <button
+                          className={`view-toggle-btn ${isBackendSource ? 'active' : ''}`}
+                          onClick={() => setDataSource((current) => (
+                            current === 'backend' ? 'instantdb' : 'backend'
+                          ))}
+                        >
+                          {isBackendSource ? 'Backend Data' : 'InstantDB Data'}
+                        </button>
+                      )}
+                      <button
+                        className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
+                        onClick={() => setViewMode('list')}
+                      >
+                        📋 List View
+                      </button>
+                      <button
+                        className={`view-toggle-btn ${viewMode === 'map' ? 'active' : ''}`}
+                        onClick={() => setViewMode('map')}
+                      >
+                        🗺️ Map View
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
               {import.meta.env.DEV && showBackendPreview && <BackendDataPreview />}
 

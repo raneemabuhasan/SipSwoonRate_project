@@ -920,7 +920,31 @@ html {
 .actions-bar {
   margin-bottom: 2rem;
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.browse-actions {
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.home-tab-btn {
+  background: linear-gradient(135deg, var(--white) 0%, #FAF8F5 100%);
+  border: 1px solid rgba(201, 169, 97, 0.25);
+  box-shadow: 0 2px 10px rgba(62, 39, 35, 0.1);
+  color: var(--primary-color);
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.home-tab-btn::before {
+  content: '<';
+  margin-right: 0.45rem;
 }
 
 /* Backend Preview */
@@ -1863,6 +1887,7 @@ html {
 
   .view-toggle {
     width: 100%;
+    flex-wrap: wrap;
   }
 
   .view-toggle-btn {
@@ -1879,7 +1904,17 @@ html {
 
   .actions-bar {
     flex-direction: column;
+    align-items: stretch;
     gap: 1rem;
+  }
+
+  .browse-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .home-tab-btn {
+    width: 100%;
   }
 
   .map-controls {
