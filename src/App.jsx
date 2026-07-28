@@ -1,61 +1,69 @@
-import React, { useState, useEffect } from 'react';
-import { db } from './db';
-import { id } from '@instantdb/react';
+import React, { Suspense, lazy, useState } from 'react';
 import Auth from './components/Auth';
 import CoffeeList from './components/CoffeeList';
 import SearchBar from './components/SearchBar';
 import ReviewForm from './components/ReviewForm';
-import Profile from './components/Profile';
-import CoffeeShopMap from './components/CoffeeShopMap';
-import AdminTools from './components/AdminTools';
 import HomePage from './components/HomePage';
 import AboutModal from './components/AboutModal';
-import PreferenceQuestionnaire from './components/PreferenceQuestionnaire';
-import BackendDataPreview from './components/BackendDataPreview';
-import { clearRememberMeToken, isOwner } from './utils/auth';
-import { getBackendShops } from './utils/backendApi';
+import { useBackendShops } from './hooks/useBackendShops';
+import { useAuth } from './context/AuthContext';
+import { deleteCafeReview } from './utils/backendApi';
+import { getUserLocation } from './utils/location';
 
-const BACKEND_SHOP_QUERY = {
-  latitude: 37.7749,
-  longitude: -122.4194,
-  radius: 10,
-};
+const BackendDataPreview = lazy(() => import('./components/BackendDataPreview'));
+const CoffeeShopMap = lazy(() => import('./components/CoffeeShopMap'));
+const PreferenceQuestionnaire = lazy(() => import('./components/PreferenceQuestionnaire'));
+const Profile = lazy(() => import('./components/Profile'));
+
+const CITY_CAFE_QUERIES = [
+  {
+    id: 'new-york',
+    label: 'New York',
+    latitude: 40.7128,
+    longitude: -74.0060,
+    radius: 4,
+    limit: 12,
+  },
+  {
+    id: 'boston',
+    label: 'Boston',
+    latitude: 42.3601,
+    longitude: -71.0589,
+    radius: 4,
+    limit: 12,
+  },
+  {
+    id: 'san-francisco',
+    label: 'San Francisco',
+    latitude: 37.7749,
+    longitude: -122.4194,
+    radius: 4,
+    limit: 12,
+  },
+];
+
+function getRandomCityCafeQuery() {
+  return CITY_CAFE_QUERIES[Math.floor(Math.random() * CITY_CAFE_QUERIES.length)];
+}
+
+function LoadingFallback({ label = 'Loading...' }) {
+  return (
+    <div className="loading-container">
+      <div className="loading-spinner">{label}</div>
+    </div>
+  );
+}
 
 function App() {
-  const { user } = db.useAuth();
-  
-  // Query coffee shops with reviews for map view
-  const { data } = db.useQuery({
-    coffeeShops: {
-      reviews: {},
-    },
-  });
-
-  // Query current user's data including preferences
-  const { data: userData } = db.useQuery(
-    user?.id ? {
-      users: {
-        $: {
-          where: {
-            id: user.id,
-          },
-        },
-      },
-    } : null
-  );
-
-  const currentUserData = userData?.users?.[0];
+  const { user, accessToken, profile: currentUserData, signOut, refreshProfile } = useAuth();
 
   // State declarations - must be before useEffects that use them
   const [searchQuery, setSearchQuery] = useState('');
   const [minRating, setMinRating] = useState(null);
-  const [sortBy, setSortBy] = useState('newest');
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [editingReview, setEditingReview] = useState(null);
   const [selectedShop, setSelectedShop] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
-  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  const [showAdminTools, setShowAdminTools] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'map'
   const [showHomePage, setShowHomePage] = useState(true); // Start with home page
@@ -63,73 +71,21 @@ function App() {
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [newUserId, setNewUserId] = useState(null);
   const [showBackendPreview, setShowBackendPreview] = useState(false);
-  const [dataSource, setDataSource] = useState('instantdb');
-  const [backendShops, setBackendShops] = useState([]);
-  const [backendStatus, setBackendStatus] = useState('idle');
-  const [backendError, setBackendError] = useState('');
+  const [shopsRefreshKey, setShopsRefreshKey] = useState(0);
+  const [activeCafeQuery, setActiveCafeQuery] = useState(getRandomCityCafeQuery);
+  const [cafeNotice, setCafeNotice] = useState('');
 
-  const isBackendSource = import.meta.env.DEV && dataSource === 'backend';
-
-  useEffect(() => {
-    if (!isBackendSource) {
-      return;
-    }
-
-    let isCurrentRequest = true;
-
-    const loadBackendShops = async () => {
-      try {
-        setBackendStatus('loading');
-        setBackendError('');
-
-        const response = await getBackendShops(BACKEND_SHOP_QUERY);
-        const normalizedShops = (response.data || []).map((shop) => ({
-          ...shop,
-          createdAt: shop.createdAt || 0,
-          reviews: shop.reviews || [],
-          favorites: shop.favorites || [],
-          backendSource: true,
-        }));
-
-        if (isCurrentRequest) {
-          setBackendShops(normalizedShops);
-          setBackendStatus('ready');
-        }
-      } catch (error) {
-        if (isCurrentRequest) {
-          setBackendError(error.message || 'Unable to load backend shops');
-          setBackendStatus('error');
-          setBackendShops([]);
-        }
-      }
-    };
-
-    loadBackendShops();
-
-    return () => {
-      isCurrentRequest = false;
-    };
-  }, [isBackendSource]);
+  const { backendShops, backendStatus, backendError, backendMeta } = useBackendShops({
+    enabled: true,
+    query: activeCafeQuery,
+    token: accessToken,
+    refreshKey: shopsRefreshKey,
+  });
+  const displayedCoffeeShops = backendShops;
 
   const handleSignOut = async () => {
-    // Clear remember me data from localStorage
-    clearRememberMeToken();
-    
-    // Clear remember me token from database
-    if (user?.id) {
-      try {
-        await db.transact([
-          db.tx.$users[user.id].update({
-            rememberMeToken: null,
-          }),
-        ]);
-      } catch (error) {
-        console.error('Error clearing remember me token:', error);
-      }
-    }
-    
-    // Sign out
-    await db.auth.signOut();
+    await signOut();
+    setShowProfile(false);
   };
 
   const handleEditReview = (review) => {
@@ -145,8 +101,7 @@ function App() {
     }
     
     setEditingReview(review);
-    // review.shop might be a ref object, get the actual shop data
-    setSelectedShop(review.shop?.id ? { id: review.shop.id } : review.shop);
+    setSelectedShop(review.shop);
     setShowReviewForm(true);
   };
 
@@ -162,41 +117,8 @@ function App() {
     }
 
     try {
-      console.log('Deleting review:', reviewId);
-      
-      // First, verify ownership by fetching the review
-      const { data: reviewData } = await db.queryOnce({
-        reviews: {
-          $: {
-            where: {
-              id: reviewId,
-            },
-          },
-          reviewer: {},
-        },
-      });
-
-      if (!reviewData?.reviews || reviewData.reviews.length === 0) {
-        alert('Review not found');
-        return;
-      }
-
-      const review = reviewData.reviews[0];
-      
-      // Verify that the current user is the owner of the review
-      if (review.reviewer?.id !== user.id) {
-        alert('You can only delete your own reviews');
-        console.error('Unauthorized delete attempt: User', user.id, 'tried to delete review owned by', review.reviewer?.id);
-        return;
-      }
-      
-      // Delete the review - InstantDB will automatically update all queries
-      const result = await db.transact([db.tx.reviews[reviewId].delete()]);
-      
-      console.log('Review deleted successfully:', result);
-      
-      // The UI will update automatically via db.useQuery() in CoffeeList
-      // InstantDB's real-time subscriptions will refresh the data
+      await deleteCafeReview(accessToken, reviewId);
+      setShopsRefreshKey((current) => current + 1);
     } catch (error) {
       console.error('Error deleting review:', error);
       alert(`Failed to delete review: ${error.message || 'Unknown error'}. Please try again.`);
@@ -207,6 +129,7 @@ function App() {
     setShowReviewForm(false);
     setEditingReview(null);
     setSelectedShop(null);
+    setShopsRefreshKey((current) => current + 1);
   };
 
   const handleReviewFormCancel = () => {
@@ -228,6 +151,7 @@ function App() {
   const handleQuestionnaireComplete = () => {
     setShowQuestionnaire(false);
     setNewUserId(null);
+    refreshProfile();
   };
 
   const handleQuestionnaireSkip = () => {
@@ -235,8 +159,21 @@ function App() {
     setNewUserId(null);
   };
 
+  const handleAddReview = (shop) => {
+    if (!user) {
+      const shouldSignIn = window.confirm('Sign in to add a review.\n\nWould you like to sign in now?');
+      if (shouldSignIn) setShowAuth(true);
+      return;
+    }
+
+    setSelectedShop(shop);
+    setEditingReview(null);
+    setShowReviewForm(true);
+  };
+
   const handleReturnHome = () => {
     setShowHomePage(true);
+    setViewMode('list');
     setShowReviewForm(false);
     setEditingReview(null);
     setSelectedShop(null);
@@ -244,204 +181,50 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  return (
-    <div 
-      className="app"
-      onClick={() => showProfileDropdown && setShowProfileDropdown(false)}
-    >
-      {/*<nav className="navbar" onClick={(e) => e.stopPropagation()}>
-        <div className="container">
-          <div className="nav-brand">
-            <h1 
-              onClick={() => setShowHomePage(true)}
-              style={{ 
-                cursor: 'pointer',
-                transition: 'color 0.2s ease',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.color = '#8D7B6D'}
-              onMouseLeave={(e) => e.currentTarget.style.color = '#6F4E37'}
-            >
-              ☕ Sip & Swoon
-            </h1>
-          </div>
+  const loadFallbackCafes = () => {
+    setActiveCafeQuery(getRandomCityCafeQuery());
+    setSearchQuery('');
+    setShopsRefreshKey((current) => current + 1);
+  };
 
-          <div className="nav-menu" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button
-              onClick={() => setShowAboutModal(true)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#6F4E37',
-                fontSize: '1rem',
-                fontWeight: '500',
-                cursor: 'pointer',
-                padding: '0.5rem 1rem',
-                borderRadius: '6px',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f8fafc';
-                e.currentTarget.style.color = '#5A3D2D';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'none';
-                e.currentTarget.style.color = '#6F4E37';
-              }}
-            >
-              About
-            </button>
-            {user ? (
-              <div
-                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  cursor: 'pointer',
-                  padding: '0.5rem',
-                  borderRadius: '8px',
-                  transition: 'background 0.2s',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              >
-                {(currentUserData?.profilePhotoUrl || user.profilePhotoUrl) ? (
-                  <img
-                    src={currentUserData?.profilePhotoUrl || user.profilePhotoUrl}
-                    alt="Profile"
-                    style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '50%',
-                      objectFit: 'cover',
-                      border: '2px solid #6F4E37',
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '50%',
-                      background: '#6F4E37',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      fontSize: '1.2rem',
-                    }}
-                  >
-                    {currentUserData?.username?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'}
-                  </div>
-                )}
-                <span style={{ color: '#6F4E37', fontWeight: '500' }}>
-                  {currentUserData?.username || user.email || 'User'}
-                </span>
-                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>▼</span>
-              </div>
-            ) : (
-              <button
-                className="btn btn-primary"
-                onClick={() => setShowAuth(true)}
-                style={{
-                  padding: '0.5rem 1.5rem',
-                  fontSize: '1rem',
-                }}
-              >
-                Sign In
-              </button>
-            )}
-            
-            {showProfileDropdown && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: '0.5rem',
-                  background: 'white',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                  minWidth: '200px',
-                  zIndex: 1000,
-                }}
-              >
-                <button
-                  className="dropdown-item"
-                  onClick={() => {
-                    setShowProfile(true);
-                    setShowProfileDropdown(false);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    border: 'none',
-                    background: 'none',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'background 0.2s',
-                    borderBottom: '1px solid #e2e8f0',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  👤 My Profile
-                </button>
-                {isOwner(currentUserData?.email) && (
-                  <button
-                    className="dropdown-item"
-                    onClick={() => {
-                      setShowAdminTools(true);
-                      setShowProfileDropdown(false);
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem 1rem',
-                      border: 'none',
-                      background: 'none',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      transition: 'background 0.2s',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  >
-                    🛠️ Admin Tools
-                  </button>
-                )}
-                <button
-                  className="dropdown-item"
-                  onClick={() => {
-                    handleSignOut();
-                    setShowProfileDropdown(false);
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    border: 'none',
-                    background: 'none',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    color: '#dc2626',
-                    transition: 'background 0.2s',
-                    borderRadius: '0 0 8px 8px',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#fee2e2'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  🚪 Sign Out
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </nav>
-*/}
+  const handleBrowseCafes = async () => {
+    setViewMode('list');
+    setShowHomePage(false);
+
+    const shouldShareLocation = window.confirm(
+      'Would you like to share your location so Sip & Swoon can show cafes near you?'
+    );
+
+    if (!shouldShareLocation) {
+      setCafeNotice('Location sharing was skipped. Showing cafes from a sample city instead.');
+      loadFallbackCafes();
+      return;
+    }
+
+    try {
+      const location = await getUserLocation();
+      setActiveCafeQuery({
+        id: 'near-you',
+        label: 'Near you',
+        latitude: location.latitude,
+        longitude: location.longitude,
+        radius: 5,
+        limit: 12,
+      });
+      setSearchQuery('');
+      setCafeNotice('');
+      setShopsRefreshKey((current) => current + 1);
+    } catch (error) {
+      setCafeNotice(`${error.message || 'Your location could not be read.'} Showing cafes from a sample city instead.`);
+      loadFallbackCafes();
+    }
+  };
+
+  return (
+    <div className="app">
       {showHomePage ? (
             <HomePage 
-              onBrowseCafes={() => setShowHomePage(false)} 
+              onBrowseCafes={handleBrowseCafes}
               onShowAbout={() => setShowAboutModal(true)}
             />
           ) : (
@@ -449,25 +232,26 @@ function App() {
               <div className="container">
                 <div className="actions-bar">
                   <button
-                    className="view-toggle-btn home-tab-btn"
+                    className="home-tab-btn"
                     onClick={handleReturnHome}
                     aria-label="Return to home page"
                   >
-                    Home
+                    Sip & Swoon
                   </button>
 
                   <div className="browse-actions">
                     {user ? (
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => {
-                          setSelectedShop(null);
-                          setEditingReview(null);
-                          setShowReviewForm(true);
-                        }}
-                      >
-                        + Add Coffee Shop & Review
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => setShowProfile(true)}
+                        >
+                          Profile
+                        </button>
+                        <button className="btn btn-secondary" onClick={handleSignOut}>
+                          Sign Out
+                        </button>
+                      </div>
                     ) : (
                       <button
                         className="btn btn-primary"
@@ -486,46 +270,50 @@ function App() {
                           API Preview
                         </button>
                       )}
-                      {import.meta.env.DEV && (
+                      {viewMode === 'list' ? (
                         <button
-                          className={`view-toggle-btn ${isBackendSource ? 'active' : ''}`}
-                          onClick={() => setDataSource((current) => (
-                            current === 'backend' ? 'instantdb' : 'backend'
-                          ))}
+                          className="view-toggle-btn"
+                          onClick={() => setViewMode('map')}
                         >
-                          {isBackendSource ? 'Backend Data' : 'InstantDB Data'}
+                          Map View
+                        </button>
+                      ) : (
+                        <button
+                          className="view-toggle-btn"
+                          onClick={() => setViewMode('list')}
+                        >
+                          Return to Cafes
                         </button>
                       )}
-                      <button
-                        className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
-                        onClick={() => setViewMode('list')}
-                      >
-                        📋 List View
-                      </button>
-                      <button
-                        className={`view-toggle-btn ${viewMode === 'map' ? 'active' : ''}`}
-                        onClick={() => setViewMode('map')}
-                      >
-                        🗺️ Map View
-                      </button>
                     </div>
                   </div>
                 </div>
 
-              {import.meta.env.DEV && showBackendPreview && <BackendDataPreview />}
-
-              {isBackendSource && (
-                <div className={`backend-source-banner ${backendStatus === 'error' ? 'error' : ''}`}>
-                  {backendStatus === 'loading' && 'Loading shops from the local backend...'}
-                  {backendStatus === 'ready' && `Showing ${backendShops.length} shops from the local backend mock API.`}
-                  {backendStatus === 'error' && (
-                    <>
-                      Backend data is not reachable. Start it with <code>npm run server</code>.
-                      {backendError && <span>{backendError}</span>}
-                    </>
-                  )}
-                </div>
+              {import.meta.env.DEV && showBackendPreview && (
+                <Suspense fallback={<LoadingFallback label="Loading API preview..." />}>
+                  <BackendDataPreview />
+                </Suspense>
               )}
+
+              <div className={`backend-source-banner ${backendStatus === 'error' ? 'error' : ''}`}>
+                {backendStatus === 'loading' && 'Loading cafes from the backend...'}
+                {backendStatus === 'ready' && (
+                  <>
+                    {backendShops.length > 0
+                      ? `Showing ${backendShops.length} cafes from the backend.`
+                      : 'No cafes were found for this location.'}
+                    {backendMeta?.cacheWarning && <span>{backendMeta.cacheWarning}</span>}
+                    {backendMeta?.filterFallback && <span>A broader nearby-cafe selection is being shown.</span>}
+                    {cafeNotice && <span>{cafeNotice}</span>}
+                  </>
+                )}
+                {backendStatus === 'error' && (
+                  <>
+                    Backend data is not reachable. Start it with <code>npm run server</code>.
+                    {backendError && <span>{backendError}</span>}
+                  </>
+                )}
+              </div>
 
               {showReviewForm && (
                 <div className="modal-overlay" onClick={handleReviewFormCancel}>
@@ -545,31 +333,31 @@ function App() {
                   <SearchBar
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
-                    coffeeShops={isBackendSource ? backendShops : data?.coffeeShops || []}
+                    coffeeShops={displayedCoffeeShops}
                     minRating={minRating}
                     onMinRatingChange={setMinRating}
-                    sortBy={sortBy}
-                    onSortChange={setSortBy}
                   />
 
                   <CoffeeList
                     searchQuery={searchQuery}
                     minRating={minRating}
-                    sortBy={sortBy}
                     currentUserId={user?.id}
                     currentUserData={currentUserData}
-                    externalShops={isBackendSource ? backendShops : null}
-                    externalLabel={isBackendSource ? 'Backend mock API' : ''}
-                    isExternalData={isBackendSource}
-                    isExternalLoading={isBackendSource && backendStatus === 'loading'}
-                    externalError={isBackendSource && backendStatus === 'error' ? backendError : ''}
+                    shops={displayedCoffeeShops}
+                    isLoading={backendStatus === 'loading'}
+                    error={backendStatus === 'error' ? backendError : ''}
+                    accessToken={accessToken}
                     onEditReview={handleEditReview}
                     onDeleteReview={handleDeleteReview}
+                    onAddReview={handleAddReview}
+                    onRefresh={() => setShopsRefreshKey((current) => current + 1)}
                     onShowAuth={() => setShowAuth(true)}
                   />
                 </>
               ) : (
-                <CoffeeShopMap coffeeShops={isBackendSource ? backendShops : data?.coffeeShops || []} />
+                <Suspense fallback={<LoadingFallback label="Loading map..." />}>
+                  <CoffeeShopMap coffeeShops={displayedCoffeeShops} />
+                </Suspense>
               )}
               </div>
             </main>
@@ -582,7 +370,7 @@ function App() {
 
       {showAuth && (
         <div className="modal-overlay" onClick={() => setShowAuth(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content auth-modal-content" onClick={(e) => e.stopPropagation()}>
             <Auth 
               onSuccess={handleAuthSuccess}
               onSignUpSuccess={handleSignUpSuccess}
@@ -591,15 +379,19 @@ function App() {
         </div>
       )}
 
-      {showProfile && <Profile onClose={() => setShowProfile(false)} />}
-      {showAdminTools && <AdminTools onClose={() => setShowAdminTools(false)} />}
-
+      {showProfile && (
+        <Suspense fallback={<LoadingFallback label="Loading profile..." />}>
+          <Profile onClose={() => setShowProfile(false)} />
+        </Suspense>
+      )}
       {showQuestionnaire && newUserId && (
-        <PreferenceQuestionnaire
-          userId={newUserId}
-          onComplete={handleQuestionnaireComplete}
-          onSkip={handleQuestionnaireSkip}
-        />
+        <Suspense fallback={<LoadingFallback label="Loading questionnaire..." />}>
+          <PreferenceQuestionnaire
+            userId={newUserId}
+            onComplete={handleQuestionnaireComplete}
+            onSkip={handleQuestionnaireSkip}
+          />
+        </Suspense>
       )}
     </div>
   );

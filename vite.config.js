@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173, // Fixed port to match InstantDB configuration
+    port: 5173, // Fixed port to match Supabase redirect configuration
     strictPort: true, // Fail if port is already in use
     proxy: {
       '/api': {

@@ -1,8 +1,14 @@
 import React, { useState } from 'react';
-import { db } from '../db';
+import { useAuth } from '../context/AuthContext';
 import { validateUsername } from '../utils/auth';
+import { updateCurrentUserProfile } from '../utils/backendApi';
 
-export default function PreferenceQuestionnaire({ userId, onComplete, onSkip }) {
+function getBackendMessage(error) {
+  return error.message?.replace(/^Backend request failed: \d+\s-\s/, '') || '';
+}
+
+export default function PreferenceQuestionnaire({ onComplete, onSkip }) {
+  const { accessToken, refreshProfile } = useAuth();
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [usernameError, setUsernameError] = useState('');
   const [answers, setAnswers] = useState({
@@ -128,15 +134,20 @@ export default function PreferenceQuestionnaire({ userId, onComplete, onSkip }) 
         }
         updateData.username = username.trim();
       }
-      await db.transact([
-        db.tx.users[userId].merge(updateData),
-      ]);
+      await updateCurrentUserProfile(accessToken, updateData);
+      await refreshProfile();
 
       if (onComplete) {
         onComplete(answers);
       }
     } catch (error) {
       console.error('Error saving preferences:', error);
+      const message = getBackendMessage(error);
+      if (message.includes('username')) {
+        setUsernameError(message);
+        setCurrentQuestion(0);
+        return;
+      }
       alert('Failed to save preferences. Please try again.');
     }
   };

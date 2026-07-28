@@ -8,6 +8,7 @@ export default function ReviewCard({ review, currentUserId, onEdit, onDelete }) 
   // 2. Review has a reviewer linked to it
   // 3. The reviewer's ID matches the current user's ID
   const isOwner = currentUserId && review.reviewer?.id && review.reviewer.id === currentUserId;
+  const reviewerName = review.reviewer?.username || 'Sip & Swoon user';
 
   return (
     <div className="review-card">
@@ -17,7 +18,7 @@ export default function ReviewCard({ review, currentUserId, onEdit, onDelete }) 
         </div>
         <div className="review-meta">
           <span className="review-author">
-            {review.reviewer?.username || review.reviewer?.email || 'Anonymous'}
+            {reviewerName}
           </span>
           <span className="review-date">{getTimeAgo(review.createdAt)}</span>
         </div>
@@ -63,4 +64,3 @@ export default function ReviewCard({ review, currentUserId, onEdit, onDelete }) 
     </div>
   );
 }
-
