@@ -69,9 +69,20 @@ Verification: `npm run db:verify-data-api`
 - [ ] Review API/database logs for suspicious historical access.
 - [x] Checked the repository and full Git history for deployment configuration, workflows, production URLs, branches, and tags; none were found.
 - [x] User checked Vercel, Render, and Railway through GitHub sign-in and reported no manually created projects (2026-07-21); the automation browser could not independently inspect those signed-in sessions.
-- [x] Identified environments holding `DATABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY`: local `.env` only, based on repository evidence and the user’s provider-account check.
+- [x] Identified environments holding `DATABASE_URL` or the legacy `SUPABASE_SERVICE_ROLE_KEY`: local `.env` only, based on repository evidence and the user’s provider-account check.
 - [ ] Rotate the database password; update deployment secrets and local `.env`; verify connectivity.
-- [ ] Replace/rotate the service-role credential; update deployment secrets and local `.env`; verify authenticated flows.
+- [ ] Revoke the now-unused service-role credential and remove it from local `.env`.
 - [ ] Confirm the old credentials no longer work.
 
 Do not rotate live credentials until replacement values can be updated in every deployed server in the same maintenance window. Never place a service-role or secret key in a `VITE_` variable.
+
+## Public-repository review
+
+- [x] Confirmed local secrets are ignored and are absent from all Git commits and branches.
+- [x] Confirmed production dependencies have no known npm audit advisories.
+- [x] Removed reviewer email addresses from API review payloads.
+- [x] Required a valid Supabase bearer token for signup-profile changes; identity is derived from the verified token.
+- [x] Removed the application's service-role-key dependency.
+- [x] Replaced internal exception details in HTTP 500 responses with a generic message.
+- [x] Disabled the Express signature, limited JSON bodies, and added baseline browser security headers.
+- [x] Expanded ignore rules for environment variants, private keys, certificates, and common credential files.

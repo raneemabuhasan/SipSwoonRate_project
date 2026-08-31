@@ -34,13 +34,12 @@ A React + Express coffee rating app. Supabase Auth handles identity, while the l
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_ANON_KEY=your_supabase_anon_key
-   SUPABASE_SERVICE_ROLE_KEY=your_server_only_service_role_key
    CLIENT_ORIGIN=http://127.0.0.1:5173
    ```
 
    For local application traffic, use the Supabase **Session pooler** connection string on port `5432` for `DATABASE_URL`. Copy the exact value from the project dashboard's **Connect** panel. The direct `db.<project-ref>.supabase.co` URL requires working IPv6 and can be unreliable on IPv4-only networks.
 
-   `SUPABASE_SERVICE_ROLE_KEY` is used only by the Express backend to create the app profile row after signup, so username login works right after email confirmation. Never prefix it with `VITE_` or expose it in frontend code.
+   Never place database passwords, admin tokens, or Supabase secret/service-role keys in a `VITE_` variable; `VITE_` values are bundled into public frontend code.
 
 3. Apply the Postgres schema:
    ```bash

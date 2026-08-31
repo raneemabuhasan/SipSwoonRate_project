@@ -89,12 +89,11 @@ export async function passwordLogin(identifier, password) {
   });
 }
 
-export async function createSignupProfile({ supabaseUserId, email, username }) {
+export async function createSignupProfile(token, username) {
   return requestJson('/api/auth/signup-profile', {
     method: 'POST',
+    token,
     body: {
-      supabaseUserId,
-      email,
       username,
     },
   });

@@ -3,7 +3,6 @@ import { isDatabaseConfigured } from '../db/client.js';
 import { findOrCreateAppUser } from '../repositories/usersRepository.js';
 
 let supabase = null;
-let supabaseAdmin = null;
 
 export function getSupabaseClient() {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -23,26 +22,6 @@ export function getSupabaseClient() {
   }
 
   return supabase;
-}
-
-export function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    return null;
-  }
-
-  if (!supabaseAdmin) {
-    supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
-  }
-
-  return supabaseAdmin;
 }
 
 function getBearerToken(req) {

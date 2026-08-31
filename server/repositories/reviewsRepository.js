@@ -33,7 +33,6 @@ function mapReviewRow(row) {
     reviewer: {
       id: row.supabase_user_id,
       appUserId: row.user_id,
-      email: row.email,
       username: row.username,
       profilePhotoUrl: row.profile_photo_url,
     },
@@ -44,7 +43,6 @@ function mapReviewRow(row) {
 const REVIEW_SELECT = `
   r.*,
   u.supabase_user_id,
-  u.email,
   u.username,
   u.profile_photo_url,
   c.id as cafe_id,

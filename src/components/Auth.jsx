@@ -105,13 +105,9 @@ export default function Auth({ onSuccess, onSignUpSuccess }) {
         let usernameProfileCreated = false;
         let profileWarning = '';
 
-        if (trimmedUsername && data?.user?.id) {
+        if (trimmedUsername && data?.session?.access_token) {
           try {
-            await createSignupProfile({
-              supabaseUserId: data.user.id,
-              email: normalizedEmail,
-              username: trimmedUsername,
-            });
+            await createSignupProfile(data.session.access_token, trimmedUsername);
             usernameProfileCreated = true;
           } catch (profileError) {
             profileWarning = SIGNUP_PROFILE_WARNING;

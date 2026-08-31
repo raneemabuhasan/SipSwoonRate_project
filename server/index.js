@@ -28,12 +28,11 @@ import {
 } from './repositories/postgresPlaceCache.js';
 import { createReview, deleteReview, findReviewsByUserId, updateReview } from './repositories/reviewsRepository.js';
 import {
-  getSupabaseAdminClient,
   getSupabaseClient,
   requireSupabaseUser,
   resolveSupabaseUser,
 } from './middleware/supabaseAuth.js';
-import { createSignupAppUser, findAppUserByUsername, updateAppUser } from './repositories/usersRepository.js';
+import { findAppUserByUsername, updateAppUser } from './repositories/usersRepository.js';
 import { UsernameValidationError, validateUsername } from './utils/usernames.js';
 import { createRateLimit } from './middleware/rateLimit.js';
 import {
@@ -55,11 +54,17 @@ const usernameRateLimit = createRateLimit({ windowMs: 15 * 60 * 1000, max: 30 })
 
 const app = express();
 
-app.use(express.json());
+app.disable('x-powered-by');
+app.use(express.json({ limit: '100kb' }));
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', CLIENT_ORIGIN);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Admin-Token');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), payment=(), usb=()');
 
   if (req.method === 'OPTIONS') {
     res.sendStatus(204);
@@ -916,44 +921,10 @@ app.get('/api/shops', async (req, res, next) => {
   }
 });
 
-app.post('/api/auth/signup-profile', async (req, res, next) => {
+app.post('/api/auth/signup-profile', requireSupabaseUser, async (req, res, next) => {
   try {
-    if (!isDatabaseConfigured()) {
-      res.status(503).json({ error: 'DATABASE_URL is required to create signup profiles.' });
-      return;
-    }
-
-    const adminClient = getSupabaseAdminClient();
-
-    if (!adminClient) {
-      res.status(503).json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required to create signup profiles.' });
-      return;
-    }
-
-    const supabaseUserId = req.body.supabaseUserId?.trim();
-    const email = req.body.email?.toLowerCase().trim();
     const username = req.body.username?.trim() || null;
-
-    if (!supabaseUserId || !email) {
-      res.status(400).json({ error: 'supabaseUserId and email are required.' });
-      return;
-    }
-
-    const { data, error } = await adminClient.auth.admin.getUserById(supabaseUserId);
-
-    if (error || !data?.user?.id) {
-      res.status(404).json({ error: 'Supabase signup user was not found.' });
-      return;
-    }
-
-    if (data.user.email?.toLowerCase().trim() !== email) {
-      res.status(400).json({ error: 'Signup profile email does not match the Supabase user.' });
-      return;
-    }
-
-    const appUser = await createSignupAppUser({
-      supabaseUserId,
-      email,
+    const appUser = await updateAppUser(req.user.appUserId, {
       username,
     });
 
@@ -1410,7 +1381,7 @@ app.use((req, res) => {
 app.use((error, req, res, next) => {
   console.error(error);
   res.status(500).json({
-    error: error.message || 'Unexpected server error',
+    error: 'Unexpected server error',
   });
 });
 

@@ -34,37 +34,6 @@ export async function findOrCreateAppUser({ supabaseUserId, email }) {
   return mapAppUser(result?.rows?.[0]);
 }
 
-export async function createSignupAppUser({ supabaseUserId, email, username }) {
-  const validatedUsername = validateUsername(username);
-
-  const result = await query(
-    `
-      insert into app_users (supabase_user_id, email, username, username_normalized)
-      values ($1, $2, $3, $4)
-      on conflict (supabase_user_id) do update set
-        email = excluded.email,
-        username = case
-          when app_users.username is null then excluded.username
-          else app_users.username
-        end,
-        username_normalized = case
-          when app_users.username_normalized is null then excluded.username_normalized
-          else app_users.username_normalized
-        end,
-        updated_at = now()
-      returning *
-    `,
-    [
-      supabaseUserId,
-      email || '',
-      validatedUsername?.username || null,
-      validatedUsername?.usernameNormalized || null,
-    ]
-  );
-
-  return mapAppUser(result?.rows?.[0]);
-}
-
 export async function findAppUserByUsername(username) {
   const usernameNormalized = normalizeUsername(username);
 
