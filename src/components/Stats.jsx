@@ -1,13 +1,7 @@
 import React from 'react';
-import { db } from '../db';
 import { calculateAverageRating } from '../utils/helpers';
 
-export default function Stats() {
-  const { data, isLoading } = db.useQuery({
-    coffeeShops: {},
-    reviews: {},
-  });
-
+export default function Stats({ coffeeShops = [], isLoading = false }) {
   if (isLoading) {
     return (
       <div className="stats-container">
@@ -18,44 +12,25 @@ export default function Stats() {
     );
   }
 
-  const shops = data?.coffeeShops || [];
-  const reviews = data?.reviews || [];
+  const reviews = coffeeShops.flatMap((shop) => shop.reviews || []);
   const avgRating = parseFloat(calculateAverageRating(reviews));
   const totalReviews = reviews.length;
 
-  // Extract city from location string
   const extractCity = (location) => {
     if (!location) return 'Unknown Location';
-    
-    // Try to extract city from common address formats:
-    // "123 Main St, City, State ZIP"
-    // "City, State"
-    // "City"
-    const parts = location.split(',').map(part => part.trim());
-    
-    if (parts.length >= 2) {
-      // If there are commas, the city is typically the second-to-last or before "CA", "MA", etc.
-      return parts[parts.length - 2] || parts[0];
-    }
-    
-    // If no commas, just return the whole location
-    return parts[0] || 'Unknown Location';
+    const parts = location.split(',').map((part) => part.trim());
+    return parts.length >= 2 ? parts[parts.length - 2] || parts[0] : parts[0] || 'Unknown Location';
   };
 
-  // Group coffee shops by city
-  const shopsByCity = shops.reduce((acc, shop) => {
+  const shopsByCity = coffeeShops.reduce((acc, shop) => {
     const city = extractCity(shop.location);
-    if (!acc[city]) {
-      acc[city] = 0;
-    }
-    acc[city]++;
+    acc[city] = (acc[city] || 0) + 1;
     return acc;
   }, {});
 
-  // Sort cities by shop count (descending)
   const sortedCities = Object.entries(shopsByCity)
     .sort(([, countA], [, countB]) => countB - countA)
-    .slice(0, 5); // Show top 5 cities
+    .slice(0, 5);
 
   return (
     <div className="stats-container">
@@ -99,4 +74,3 @@ export default function Stats() {
     </div>
   );
 }
-

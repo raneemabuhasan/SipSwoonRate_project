@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import CafeNameText from './CafeNameText';
 import { getBackendDrinks, getBackendHealth, getBackendShops } from '../utils/backendApi';
 
 const DEFAULT_QUERY = {
@@ -88,7 +89,7 @@ export default function BackendDataPreview() {
             {shops.map((shop) => (
               <article className="backend-preview-card" key={shop.id}>
                 <div>
-                  <h3>{shop.name}</h3>
+                  <h3><CafeNameText name={shop.name} /></h3>
                   <p>{shop.location}</p>
                 </div>
 

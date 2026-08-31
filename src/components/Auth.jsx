@@ -1,512 +1,338 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../db';
+import React, { useState } from 'react';
+import { savePendingSignupUsername } from '../context/AuthContext';
+import { isSupabaseConfigured, supabase } from '../supabaseClient';
 import {
-  validateEmail,
-  generateToken,
-  saveRememberMeToken,
-  getRememberMeToken,
-  clearRememberMeToken,
-} from '../utils/auth';
+  checkUsernameAvailability,
+  createSignupProfile,
+  passwordLogin,
+  updateCurrentUserProfile,
+} from '../utils/backendApi';
+import { validateUsername } from '../utils/auth';
+
+const GENERIC_LOGIN_ERROR = 'Invalid username/email or password.';
+const USERNAME_LOGIN_ERROR = 'We could not find that username yet. Try your email address, or check that your account confirmation is complete.';
+const SIGNUP_CONFIRMATION_MESSAGE = 'Account created. Check your email to confirm your account. After confirming, you can sign in with your email or username.';
+const EMAIL_DELIVERY_HELP = 'If no email arrives, check spam and confirm Supabase Auth has custom SMTP configured or that this address is authorized on your Supabase team.';
+const SIGNUP_PROFILE_WARNING = 'Your account was created, but username sign-in may not be ready yet. If username sign-in fails, use your email address once to finish setup.';
+
+function getBackendMessage(error) {
+  return error.message?.replace(/^Backend request failed: \d+\s-\s/, '') || '';
+}
+
+function getSignupMessage(error) {
+  const message = getBackendMessage(error) || error.message || '';
+  const normalizedMessage = message.toLowerCase();
+
+  if (normalizedMessage.includes('email address not authorized')) {
+    return 'Supabase did not send the email because this address is not authorized. Add the address to the Supabase team or configure custom SMTP.';
+  }
+
+  if (normalizedMessage.includes('rate limit') || normalizedMessage.includes('too many')) {
+    return 'Supabase email sending is rate limited right now. Wait a bit or configure custom SMTP for reliable delivery.';
+  }
+
+  return message || 'Authentication failed. Please try again.';
+}
+
+function looksLikeEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function getLoginMessage(identifier) {
+  if (!looksLikeEmail(identifier.trim())) {
+    return USERNAME_LOGIN_ERROR;
+  }
+
+  return GENERIC_LOGIN_ERROR;
+}
 
 export default function Auth({ onSuccess, onSignUpSuccess }) {
-  const { user: authUser } = db.useAuth();
-  const [mode, setMode] = useState('signin'); // 'signin', 'signup', 'verifySignup', 'verifySignin'
+  const [mode, setMode] = useState('signin');
+  const [identifier, setIdentifier] = useState('');
   const [email, setEmail] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
-  const [code, setCode] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmationEmail, setConfirmationEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  // Check for remember me token on mount and auto-sign-in if InstantDB has session
-  useEffect(() => {
-    const checkRememberMe = async () => {
-      const storedToken = getRememberMeToken();
+  const isSignup = mode === 'signup';
 
-      if (storedToken && authUser && authUser.id) {
-        try {
-          const { data: userData } = await db.queryOnce({
-            users: {
-              $: {
-                where: {
-                  id: authUser.id,
-                  rememberMeToken: storedToken,
-                },
-              },
-            },
-          });
-
-          if (userData?.users && userData.users.length > 0) {
-            if (onSuccess) {
-              setTimeout(() => onSuccess(), 100);
-            }
-            return;
-          }
-        } catch (err) {
-          console.error('Error checking remember me token:', err);
-        }
-      }
-
-      if (storedToken && !authUser && mode === 'signin') {
-        try {
-          const { data: userData } = await db.queryOnce({
-            users: {
-              $: {
-                where: {
-                  rememberMeToken: storedToken,
-                },
-              },
-            },
-          });
-
-          if (userData?.users && userData.users.length > 0) {
-            const user = userData.users[0];
-            setEmail(user.email || '');
-            setRememberMe(true);
-          }
-        } catch (err) {
-          console.error('Error checking remember me token:', err);
-          clearRememberMeToken();
-        }
-      }
-    };
-
-    checkRememberMe();
-  }, [mode, authUser, onSuccess]);
-
-  const handleSignUp = async (e) => {
-    e.preventDefault();
+  const handleEmailAuth = async (event) => {
+    event.preventDefault();
     setLoading(true);
     setError('');
     setMessage('');
 
     try {
-      const emailError = validateEmail(email);
-      if (emailError) {
-        setError(emailError);
-        return;
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.');
       }
 
       const normalizedEmail = email.toLowerCase().trim();
-      await db.auth.sendMagicCode({ email: normalizedEmail });
-      setMessage('Check your email for a verification code to complete signup!');
+      setConfirmationEmail('');
 
-      sessionStorage.setItem('pendingSignup', JSON.stringify({
-        email: normalizedEmail,
-      }));
+      if (isSignup) {
+        const trimmedUsername = username.trim();
+        const usernameError = trimmedUsername ? validateUsername(trimmedUsername) : null;
 
-      setMode('verifySignup');
-    } catch (err) {
-      setError(err.message || 'Failed to sign up. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifySignup = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      const pendingData = sessionStorage.getItem('pendingSignup');
-      if (!pendingData) {
-        setError('Signup session expired. Please try again.');
-        setMode('signup');
-        return;
-      }
-
-      const { email: pendingEmail } = JSON.parse(pendingData);
-
-      const signInResult = await db.auth.signInWithMagicCode({ email: pendingEmail, code });
-      const authUser = signInResult.user;
-
-      if (!authUser || !authUser.id) {
-        setError('Authentication failed. Please try again.');
-        return;
-      }
-
-      const userId = authUser.id;
-      const normalizedEmail = pendingEmail.toLowerCase().trim();
-
-      const { data: existingUserData } = await db.queryOnce({
-        users: {
-          $: {
-            where: {
-              id: userId,
-            },
-          },
-        },
-      });
-
-      const userExists = existingUserData?.users && existingUserData.users.length > 0;
-
-      try {
-        if (userExists) {
-          await db.transact([
-            db.tx.users[userId].merge({
-              authProvider: 'email',
-            }),
-          ]);
-        } else {
-          await db.transact([
-            db.tx.users[userId].update({
-              id: userId,
-              email: normalizedEmail,
-              authProvider: 'email',
-            }),
-          ]);
+        if (usernameError) {
+          throw new Error(usernameError);
         }
-      } catch (txError) {
-        if (txError.message?.includes('unique') && txError.message?.includes('email')) {
+
+        if (trimmedUsername) {
           try {
-            await db.transact([
-              db.tx.users[userId].merge({
-                authProvider: 'email',
-              }),
-            ]);
-          } catch (mergeError) {
-            setError('Failed to save user data: ' + (mergeError.message || 'Unknown error'));
-            return;
+            await checkUsernameAvailability(trimmedUsername);
+          } catch (usernameCheckError) {
+            throw new Error(getBackendMessage(usernameCheckError) || 'That username is not available.');
           }
-        } else {
-          setError('Failed to save user data: ' + (txError.message || 'Unknown error'));
-          return;
         }
+
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: trimmedUsername ? {
+              username: trimmedUsername,
+            } : undefined,
+          },
+        });
+
+        if (signUpError) throw signUpError;
+
+        let usernameProfileCreated = false;
+        let profileWarning = '';
+
+        if (trimmedUsername && data?.session?.access_token) {
+          try {
+            await createSignupProfile(data.session.access_token, trimmedUsername);
+            usernameProfileCreated = true;
+          } catch (profileError) {
+            profileWarning = SIGNUP_PROFILE_WARNING;
+          }
+        }
+
+        if (trimmedUsername && !usernameProfileCreated && data?.session?.access_token) {
+          try {
+            await updateCurrentUserProfile(data.session.access_token, {
+              username: trimmedUsername,
+            });
+            usernameProfileCreated = true;
+            profileWarning = '';
+          } catch {
+            profileWarning = SIGNUP_PROFILE_WARNING;
+          }
+        }
+
+        if (trimmedUsername && !usernameProfileCreated) {
+          savePendingSignupUsername({
+            email: normalizedEmail,
+            username: trimmedUsername,
+          });
+        }
+
+        if (data?.session) {
+          setMessage(profileWarning ? `Account created. ${profileWarning}` : 'Account created.');
+        } else {
+          setConfirmationEmail(normalizedEmail);
+          setMessage(`${SIGNUP_CONFIRMATION_MESSAGE} ${EMAIL_DELIVERY_HELP}${profileWarning ? ` ${profileWarning}` : ''}`);
+        }
+        if (data?.session && onSignUpSuccess) {
+          onSignUpSuccess(data.user?.id);
+        } else if (data?.session && onSuccess) {
+          onSuccess();
+        }
+        return;
       }
 
-      sessionStorage.removeItem('pendingSignup');
+      const response = await passwordLogin(identifier.trim(), password);
+      const session = response.data?.session;
 
-      if (onSignUpSuccess) {
-        setTimeout(() => onSignUpSuccess(userId), 500);
-      } else if (onSuccess) {
-        setTimeout(() => onSuccess(), 500);
+      if (!session?.access_token || !session?.refresh_token) {
+        throw new Error(GENERIC_LOGIN_ERROR);
       }
+
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+      });
+
+      if (sessionError) throw sessionError;
+      if (onSuccess) onSuccess();
     } catch (err) {
-      setError(err.message || 'Invalid code. Please try again.');
+      if (!isSignup) {
+        setError(getLoginMessage(identifier));
+      } else {
+        setError(getSignupMessage(err));
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSignIn = async (e) => {
-    e.preventDefault();
+  const handleResendConfirmation = async () => {
+    if (!confirmationEmail) return;
+
     setLoading(true);
     setError('');
     setMessage('');
 
     try {
-      const emailError = validateEmail(email);
-      if (emailError) {
-        setError(emailError);
-        return;
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.');
       }
 
-      const normalizedEmail = email.toLowerCase().trim();
-
-      const { data: userData } = await db.queryOnce({
-        users: {
-          $: {
-            where: {
-              email: normalizedEmail,
-            },
-          },
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: confirmationEmail,
+        options: {
+          emailRedirectTo: window.location.origin,
         },
       });
 
-      if (!userData?.users || userData.users.length === 0) {
-        setError('No account found with this email. Please sign up first.');
-        return;
-      }
+      if (resendError) throw resendError;
 
-      const user = userData.users[0];
-      const storedToken = getRememberMeToken();
-      const hasValidRememberMe = storedToken && user.rememberMeToken === storedToken;
-
-      if (hasValidRememberMe && rememberMe && authUser && authUser.id === user.id) {
-        setMessage('Signed in successfully!');
-        if (onSuccess) {
-          setTimeout(() => onSuccess(), 500);
-        }
-        return;
-      }
-
-      await db.auth.sendMagicCode({ email: user.email });
-
-      sessionStorage.setItem('pendingSignin', JSON.stringify({
-        email: user.email,
-        userId: user.id,
-        rememberMe: rememberMe,
-        hasValidRememberMe: hasValidRememberMe,
-      }));
-
-      setMode('verifySignin');
-      setMessage('Please check your email for the verification code to complete sign-in.');
+      setMessage(`Confirmation email sent again. ${EMAIL_DELIVERY_HELP}`);
     } catch (err) {
-      setError(err.message || 'Failed to sign in. Please try again.');
+      setError(getSignupMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifySignin = async (e) => {
-    e.preventDefault();
+  const handleGoogleSignIn = async () => {
     setLoading(true);
     setError('');
 
     try {
-      const pendingData = sessionStorage.getItem('pendingSignin');
-      if (!pendingData) {
-        setError('Signin session expired. Please try again.');
-        setMode('signin');
-        return;
+      if (!isSupabaseConfigured) {
+        throw new Error('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env.');
       }
 
-      const { email: pendingEmail, userId, rememberMe: doRememberMe } = JSON.parse(pendingData);
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
 
-      await db.auth.signInWithMagicCode({ email: pendingEmail, code });
-
-      if (doRememberMe) {
-        try {
-          const token = generateToken();
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          const { data: userData } = await db.queryOnce({
-            users: {
-              $: {
-                where: {
-                  id: userId,
-                },
-              },
-            },
-          });
-
-          if (userData?.users && userData.users.length > 0) {
-            await db.transact([
-              db.tx.users[userId].merge({
-                rememberMeToken: token,
-              }),
-            ]);
-            saveRememberMeToken(token);
-          }
-        } catch (rememberMeError) {
-          console.warn('Remember me token not saved:', rememberMeError);
-        }
-      }
-
-      sessionStorage.removeItem('pendingSignin');
-      setMessage('Signed in successfully!');
-
-      if (onSuccess) {
-        setTimeout(() => onSuccess(), 500);
-      }
+      if (oauthError) throw oauthError;
     } catch (err) {
-      setError(err.message || 'Invalid code. Please try again.');
-    } finally {
+      setError(err.message || 'Google sign-in failed. Please try again.');
       setLoading(false);
-    }
-  };
-
-  const renderForm = () => {
-    switch (mode) {
-      case 'signup':
-        return (
-          <form onSubmit={handleSignUp} className="auth-form">
-            <div className="form-group">
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                required
-                disabled={loading}
-              />
-            </div>
-
-            {error && <div className="error-message">{error}</div>}
-            {message && <div className="success-message">{message}</div>}
-
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Sending Code...' : 'Sign Up'}
-            </button>
-
-            <p className="auth-switch">
-              Already have an account?{' '}
-              <button
-                type="button"
-                onClick={() => setMode('signin')}
-                className="link-button"
-                disabled={loading}
-              >
-                Sign In
-              </button>
-            </p>
-          </form>
-        );
-
-      case 'verifySignup':
-        return (
-          <form onSubmit={handleVerifySignup} className="auth-form">
-            <div className="form-group">
-              <label htmlFor="code">Verification Code</label>
-              <input
-                id="code"
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="Enter code from email"
-                required
-                disabled={loading}
-                autoFocus
-              />
-            </div>
-
-            {error && <div className="error-message">{error}</div>}
-            {message && <div className="success-message">{message}</div>}
-
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Verifying...' : 'Verify & Create Account'}
-            </button>
-
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => {
-                setMode('signup');
-                setCode('');
-                sessionStorage.removeItem('pendingSignup');
-              }}
-              disabled={loading}
-            >
-              Back to Sign Up
-            </button>
-          </form>
-        );
-
-      case 'verifySignin':
-        return (
-          <form onSubmit={handleVerifySignin} className="auth-form">
-            <div className="form-group">
-              <label htmlFor="code">Verification Code</label>
-              <input
-                id="code"
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="Enter code from email"
-                required
-                disabled={loading}
-                autoFocus
-              />
-            </div>
-
-            {error && <div className="error-message">{error}</div>}
-            {message && <div className="success-message">{message}</div>}
-
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Verifying...' : 'Verify & Sign In'}
-            </button>
-
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => {
-                setMode('signin');
-                setCode('');
-                sessionStorage.removeItem('pendingSignin');
-              }}
-              disabled={loading}
-            >
-              Back to Sign In
-            </button>
-          </form>
-        );
-
-      default: // signin
-        return (
-          <form onSubmit={handleSignIn} className="auth-form">
-            <div className="form-group">
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                required
-                disabled={loading}
-              />
-            </div>
-
-            <div className="form-group-checkbox">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  disabled={loading}
-                />
-                <span>Remember me</span>
-              </label>
-            </div>
-
-            {error && <div className="error-message">{error}</div>}
-            {message && <div className="success-message">{message}</div>}
-
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Sending Code...' : 'Sign In'}
-            </button>
-
-            <p className="auth-switch">
-              Don't have an account?{' '}
-              <button
-                type="button"
-                onClick={() => setMode('signup')}
-                className="link-button"
-                disabled={loading}
-              >
-                Sign Up
-              </button>
-            </p>
-          </form>
-        );
-    }
-  };
-
-  const getTitle = () => {
-    switch (mode) {
-      case 'signup':
-        return 'Create Account';
-      case 'verifySignup':
-        return 'Verify Email';
-      case 'verifySignin':
-        return 'Verify Sign In';
-      default:
-        return 'Welcome Back';
-    }
-  };
-
-  const getSubtitle = () => {
-    switch (mode) {
-      case 'signup':
-        return 'Enter your email to get started';
-      case 'verifySignup':
-      case 'verifySignin':
-        return 'Enter the verification code sent to your email';
-      default:
-        return 'Sign in to continue to Sip & Swoon';
     }
   };
 
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1 className="auth-title">☕ Sip & Swoon - Rate Your Coffee</h1>
-        <h2 className="auth-heading">{getTitle()}</h2>
-        <p className="auth-subtitle">{getSubtitle()}</p>
-        {renderForm()}
+        <p className="auth-title">Sip & Swoon</p>
+        <h2 className="auth-heading">{isSignup ? 'Create Account' : 'Sign In'}</h2>
+        <p className="auth-subtitle">
+          {isSignup ? 'Save favorites and share cafe notes.' : 'Welcome back to your cafe list.'}
+        </p>
+
+        <form onSubmit={handleEmailAuth} className="auth-form">
+          {isSignup ? (
+            <>
+              <div className="form-group">
+                <label htmlFor="auth-email">Email</label>
+                <input
+                  id="auth-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                  disabled={loading}
+                  placeholder="you@example.com"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="auth-username">Username (optional)</label>
+                <input
+                  id="auth-username"
+                  type="text"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  disabled={loading}
+                  placeholder="coffeelover"
+                />
+              </div>
+            </>
+          ) : (
+            <div className="form-group">
+              <label htmlFor="auth-identifier">Email or username</label>
+              <input
+                id="auth-identifier"
+                type="text"
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value)}
+                required
+                disabled={loading}
+                placeholder="you@example.com or coffeelover"
+              />
+            </div>
+          )}
+
+          <div className="form-group">
+            <label htmlFor="auth-password">Password</label>
+            <input
+              id="auth-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              minLength={6}
+              disabled={loading}
+              placeholder="At least 6 characters"
+            />
+          </div>
+
+          {error && <div className="error-message">{error}</div>}
+          {message && <div className="success-message">{message}</div>}
+          {confirmationEmail && isSignup && (
+            <button
+              type="button"
+              className="link-button"
+              onClick={handleResendConfirmation}
+              disabled={loading}
+            >
+              Resend confirmation email
+            </button>
+          )}
+
+          <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
+            {loading ? 'Working...' : isSignup ? 'Create Account' : 'Sign In'}
+          </button>
+        </form>
+
+        <div className="auth-divider">
+          <span>or</span>
+        </div>
+
+        <button type="button" className="btn btn-secondary auth-google" onClick={handleGoogleSignIn} disabled={loading}>
+          Continue with Google
+        </button>
+
+        <p className="auth-switch">
+          {isSignup ? 'Already have an account?' : 'New here?'}{' '}
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setMode(isSignup ? 'signin' : 'signup');
+              setError('');
+              setMessage('');
+              setPassword('');
+              setConfirmationEmail('');
+            }}
+          >
+            {isSignup ? 'Sign in' : 'Create one'}
+          </button>
+        </p>
       </div>
     </div>
   );

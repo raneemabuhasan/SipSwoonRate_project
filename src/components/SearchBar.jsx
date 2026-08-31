@@ -1,13 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
+import CafeNameText from './CafeNameText';
+import {
+  getSearchMatchRange,
+  searchTextIncludes,
+  searchTextStartsWith,
+} from '../utils/helpers';
 
 export default function SearchBar({ 
   searchQuery, 
   onSearchChange, 
   coffeeShops = [], 
   minRating, 
-  onMinRatingChange, 
-  sortBy, 
-  onSortChange 
+  onMinRatingChange,
 }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
@@ -18,29 +22,25 @@ export default function SearchBar({
   const getSuggestions = (query, shops) => {
     if (!query || query.trim().length === 0) return [];
     
-    const lowerQuery = query.toLowerCase().trim();
-    
     // Exact name matches first
     const exactMatches = shops.filter(shop => 
-      shop.name && shop.name.toLowerCase().startsWith(lowerQuery)
+      searchTextStartsWith(shop.name, query)
     );
     
     // Partial matches
     const partialMatches = shops.filter(shop => 
-      shop.name && 
-      shop.name.toLowerCase().includes(lowerQuery) &&
-      !shop.name.toLowerCase().startsWith(lowerQuery)
+      searchTextIncludes(shop.name, query) &&
+      !searchTextStartsWith(shop.name, query)
     );
     
     // Location matches
     const locationMatches = shops.filter(shop => 
-      shop.location && 
-      shop.location.toLowerCase().includes(lowerQuery) &&
+      searchTextIncludes(shop.location, query) &&
       !exactMatches.includes(shop) &&
       !partialMatches.includes(shop)
     );
     
-    // Remove duplicates and limit to 7
+    // Combine matches by priority and limit to 7 suggestions
     const uniqueMatches = [...exactMatches, ...partialMatches, ...locationMatches];
     return uniqueMatches.slice(0, 7);
   };
@@ -111,16 +111,16 @@ export default function SearchBar({
   const highlightMatch = (text, query) => {
     if (!text || !query) return text;
     
-    const index = text.toLowerCase().indexOf(query.toLowerCase());
-    if (index === -1) return text;
+    const range = getSearchMatchRange(text, query);
+    if (!range) return text;
     
     return (
       <>
-        {text.substring(0, index)}
+        {text.substring(0, range.start)}
         <span className="suggestion-highlight">
-          {text.substring(index, index + query.length)}
+          {text.substring(range.start, range.end)}
         </span>
-        {text.substring(index + query.length)}
+        {text.substring(range.end)}
       </>
     );
   };
@@ -152,7 +152,7 @@ export default function SearchBar({
                 onMouseEnter={() => setSelectedSuggestionIndex(index)}
               >
                 <div className="suggestion-name">
-                  {highlightMatch(shop.name, searchQuery)}
+                  {shop.name?.includes('&') ? <CafeNameText name={shop.name} /> : highlightMatch(shop.name, searchQuery)}
                 </div>
                 {shop.location && (
                   <div className="suggestion-location">
@@ -189,21 +189,6 @@ export default function SearchBar({
           <option value="1">1+ Stars</option>
         </select>
       </div>
-
-      <div className="filter-group">
-        <label htmlFor="sortBy">Sort By:</label>
-        <select
-          id="sortBy"
-          value={sortBy}
-          onChange={(e) => onSortChange(e.target.value)}
-          className="filter-select"
-        >
-          <option value="newest">Newest First</option>
-          <option value="rating">Highest Rated</option>
-          <option value="name">Name (A-Z)</option>
-        </select>
-      </div>
     </div>
   );
 }
-

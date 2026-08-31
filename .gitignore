@@ -5,6 +5,14 @@ node_modules/
 .env
 .env.local
 .env.production
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
 
 # Build output
 dist/
@@ -23,4 +31,3 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
-
