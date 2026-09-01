@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getBackendDrinks, getBackendShops } from '../utils/backendApi';
 import { getUserLocation } from '../utils/location';
 
@@ -11,41 +11,23 @@ const BREWING_STASH_QUERY = {
   limit: 30,
 };
 
-const moodCards = [
-  {
-    label: 'Cozy Corners',
-    copy: 'Soft seats, warm lighting, and drinks worth lingering over.',
-  },
-  {
-    label: 'Study Spots',
-    copy: 'Reliable tables, friendly noise, and enough caffeine to focus.',
-  },
-  {
-    label: 'Weekend Treats',
-    copy: 'Pretty cups, sweet bites, and cafes that make an outing of it.',
-  },
-];
-
 const wait = (duration) => new Promise((resolve) => {
   window.setTimeout(resolve, duration);
 });
 
 const getRandomItem = (items) => items[Math.floor(Math.random() * items.length)];
 
-export default function HomePage({ onBrowseCafes, onShowAbout }) {
+export default function HomePage({ onBrowseCafes, onShowMap, onShowAbout, onShowProfile }) {
   const [scrollProgress, setScrollProgress] = useState(0);
-  const [moodsVisible, setMoodsVisible] = useState(false);
   const [brewStatus, setBrewStatus] = useState('idle');
   const [brewSuggestion, setBrewSuggestion] = useState(null);
   const [brewError, setBrewError] = useState('');
   const [homeRefreshKey, setHomeRefreshKey] = useState(0);
-  const moodsRef = useRef(null);
 
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     if (prefersReducedMotion) {
-      setMoodsVisible(true);
       return undefined;
     }
 
@@ -71,31 +53,6 @@ export default function HomePage({ onBrowseCafes, onShowAbout }) {
         window.cancelAnimationFrame(animationFrame);
       }
     };
-  }, []);
-
-  useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    if (prefersReducedMotion) {
-      setMoodsVisible(true);
-      return undefined;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setMoodsVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.2 }
-    );
-
-    if (moodsRef.current) {
-      observer.observe(moodsRef.current);
-    }
-
-    return () => observer.disconnect();
   }, []);
 
   const handleFindFavorite = async () => {
@@ -170,29 +127,40 @@ export default function HomePage({ onBrowseCafes, onShowAbout }) {
       style={{ '--home-scroll-progress': scrollProgress }}
     >
       <section className="home-hero" aria-labelledby="home-title">
-        <button
-          className="home-brand-tab"
-          onClick={handleRefreshHome}
-          aria-label="Refresh Sip and Swoon home page"
-        >
-          Sip & Swoon
-        </button>
+        <header className="home-header">
+          <nav className="home-header-nav home-header-nav-left" aria-label="Cafe navigation">
+            <button className="home-nav-tab" onClick={onBrowseCafes}>
+              Browse Cafes
+            </button>
+            <button className="home-nav-tab" onClick={onShowMap}>
+              Map
+            </button>
+          </nav>
 
-        <div className="home-top-tabs" aria-label="Homepage navigation">
-          <button className="home-nav-tab" onClick={onBrowseCafes}>
-            Browse Cafes
+          <button
+            className="home-brand-tab"
+            onClick={handleRefreshHome}
+            aria-label="Refresh Sip and Swoon home page"
+          >
+            Sip & Swoon
           </button>
-          <button className="home-nav-tab" onClick={onShowAbout}>
-            About
-          </button>
-        </div>
+
+          <nav className="home-header-nav home-header-nav-right" aria-label="Account navigation">
+            <button className="home-nav-tab" onClick={onShowAbout}>
+              About
+            </button>
+            <button className="home-nav-tab" onClick={onShowProfile}>
+              Profile
+            </button>
+          </nav>
+        </header>
 
         <div className="home-hero-shade" />
 
         <div className="home-hero-content" key={homeRefreshKey}>
           <h1 id="home-title">
-            Sip &<br />
-            Swoon
+            Where Today <br />
+            Tastes Better.
           </h1>
         </div>
       </section>
@@ -248,25 +216,6 @@ export default function HomePage({ onBrowseCafes, onShowAbout }) {
         </div>
       </section>
 
-      <section
-        ref={moodsRef}
-        className={`home-moods ${moodsVisible ? 'is-visible' : ''}`}
-        aria-labelledby="home-moods-title"
-      >
-        <div className="home-section-heading">
-
-          <h2 id="home-moods-title">Where today tastes better</h2>
-        </div>
-
-        <div className="home-mood-grid">
-          {moodCards.map((card) => (
-            <article className="home-mood-card" key={card.label}>
-              <h3>{card.label}</h3>
-              <p>{card.copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
     </main>
   );
 }

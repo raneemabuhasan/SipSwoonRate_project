@@ -225,7 +225,18 @@ function App() {
       {showHomePage ? (
             <HomePage 
               onBrowseCafes={handleBrowseCafes}
+              onShowMap={() => {
+                setViewMode('map');
+                setShowHomePage(false);
+              }}
               onShowAbout={() => setShowAboutModal(true)}
+              onShowProfile={() => {
+                if (user) {
+                  setShowProfile(true);
+                } else {
+                  setShowAuth(true);
+                }
+              }}
             />
           ) : (
             <main className="main-content">
